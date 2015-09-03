@@ -28,6 +28,7 @@ first_rule: all
 dummy:
 
 AVAILABLE_DEVICE_API_SRCS = cephfs_device.c \
+			    exablox_device.c \
 			    elasto_device.c \
 			    gfapi_device.c \
 			    object_store_device.c \
@@ -35,7 +36,7 @@ AVAILABLE_DEVICE_API_SRCS = cephfs_device.c \
 			    generic_tape_device.c \
 			    unix_fifo_device.c \
 			    unix_tape_device.c
-NEEDED_DEVICE_API_SRCS = unix_file_device.c @NEEDED_DEVICE_API_SRCS@
+NEEDED_DEVICE_API_SRCS = exablox_device.c unix_file_device.c @NEEDED_DEVICE_API_SRCS@
 
 CEPHFS_LIBS = @CEPHFS_LIBS@
 ELASTO_LIBS = @ELASTO_LIBS@
