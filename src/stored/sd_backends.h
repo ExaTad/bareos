@@ -67,6 +67,7 @@ static struct backend_interface_mapping_t {
    { B_OBJECT_STORE_DEV, "object" },
    { B_RADOS_DEV, "rados" },
    { B_CEPHFS_DEV, "cephfs" },
+   { B_EXABLOX_DEV, "exablox" },
    { B_ELASTO_DEV, "elasto" },
    { 0, NULL }
 };

@@ -94,6 +94,7 @@ enum {
    B_OBJECT_STORE_DEV,
    B_RADOS_DEV,
    B_CEPHFS_DEV,
+   B_EXABLOX_DEV,
    B_ELASTO_DEV
 };
 
@@ -365,6 +366,7 @@ public:
                                   dev_type == B_OBJECT_STORE_DEV ||
                                   dev_type == B_RADOS_DEV ||
                                   dev_type == B_CEPHFS_DEV ||
+                                  dev_type == B_EXABLOX_DEV ||
                                   dev_type == B_ELASTO_DEV); }
    bool is_fifo() const { return dev_type == B_FIFO_DEV; }
    bool is_vtl() const  { return dev_type == B_VTL_DEV; }
