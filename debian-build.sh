@@ -57,6 +57,8 @@ before_install()
 	# install build dependencies
 	#   use files instead of shell variables, because travis has some problems supporting variables
 	sudo apt-get update
+	sudo apt-get autoremove
+
 	dpkg-checkbuilddeps 2> /tmp/dpkg-builddeps || true
 	sed "s/.*:.*:\s//" /tmp/dpkg-builddeps > /tmp/build_depends
 	yes "" | sudo xargs --arg-file /tmp/build_depends apt-get -q --assume-yes install
@@ -76,7 +78,8 @@ before_script()
 	cd -
 	# install Bareos packages
 	if [ -z "${COVERITY_SCAN}" ]; then sudo apt-get -qq update; fi
-	if [ -z "${COVERITY_SCAN}" ]; then sudo apt-get install -y --force-yes $DB bareos bareos-database-$DB; fi
+	if [ -z "${COVERITY_SCAN}" ]; then sudo apt-get install -y --force-yes $DB; fi
+	if [ -z "${COVERITY_SCAN}" ]; then sudo apt-get install -y --force-yes bareos bareos-database-$DB; fi
 }
 
 script()
@@ -87,13 +90,13 @@ script()
 
 before_build()
 {
-	local bpkgs=$(dpkg -l | grep '^ii[ 	][ 	]*bareos[^ 	]*[ 	]' | awk '{print $2}')
+	local bpkgs=$(dpkg -l | grep '^..[ 	][ 	]*bareos[^ 	]*[ 	]' | awk '{print $2}')
+	local ppkgs=$(dpkg -l | grep '^..[ 	][ 	]*postgresql[^ 	]*[ 	]' | awk '{print $2}')
 
 	if [ ! -z "${bpkgs}" ] ; then
 		sudo dpkg --purge ${bpkgs}
 	fi
 
-	local ppkgs=$(dpkg -l | grep '^ii[ 	][ 	]*postgresql[^ 	]*[ 	]' | awk '{print $2}')
 	if [ ! -z "${ppkgs}" ] ; then
 		sudo dpkg --purge ${ppkgs}
 	fi
@@ -101,7 +104,10 @@ before_build()
 	if [ -e Makefile ] ; then
 		make distclean
 	fi
+
 	rm -f ../bareos*.deb
+	sudo rm -f ../Packages.gz
+	gzip < /dev/null > ../Packages.gz
 }
 
 env
