@@ -351,4 +351,5 @@ exablox_device::~exablox_device()
 
 exablox_device::exablox_device()
 {
+   set_cap(CAP_DEDUP);		/* the underlying filesystem supports deduplication */
 }
