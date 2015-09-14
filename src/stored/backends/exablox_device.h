@@ -31,6 +31,12 @@
 #define EXABLOX_DEVICE_H
 
 class exablox_device: public DEVICE {
+private:
+   char e_dpath[PATH_MAX];
+   char e_mpath[PATH_MAX];
+   int  e_mdfd;                        /* Metadata File descriptor, where to dump metatadata */
+   int  e_datafd;                      /* Data File descriptor, where to dump payload */
+
 public:
    exablox_device();
    ~exablox_device();
