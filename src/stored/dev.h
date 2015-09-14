@@ -164,13 +164,14 @@ enum {
    CAP_BLOCKCHECKSUM = 23,            /* Create/test block checksum */
    CAP_IOERRATEOM = 24,               /* IOError at EOM */
    CAP_IBMLINTAPE = 25,               /* Using IBM lin_tape driver */
-   CAP_ADJWRITESIZE = 26              /* Adjust write size to min/max */
+   CAP_ADJWRITESIZE = 26,             /* Adjust write size to min/max */
+   CAP_DEDUP = 27                     /* This device supports deduplication */
 };
 
 /*
  * Keep this set to the last entry in the enum.
  */
-#define CAP_MAX CAP_ADJWRITESIZE
+#define CAP_MAX CAP_DEDUP
 
 /*
  * Make sure you have enough bits to store all above bit fields.
