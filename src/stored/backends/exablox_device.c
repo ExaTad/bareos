@@ -190,8 +190,8 @@ bool exablox_device::unmount_backend(DCR *dcr, int timeout)
 
 int exablox_device::d_open(const char *pathname, int flags, int mode)
 {
-   bsnprintf(e_dpath, sizeof(dpath), "%s.datadata", pathname);
-   bsnprintf(e_mpath, sizeof(mpath), "%s.metadata", pathname);
+   bsnprintf(e_dpath, sizeof(e_dpath), "%s.datadata", pathname);
+   bsnprintf(e_mpath, sizeof(e_mpath), "%s.metadata", pathname);
 
    e_datafd = ::open(e_dpath, flags, mode);
    if (e_datafd < 0) {
@@ -201,19 +201,19 @@ int exablox_device::d_open(const char *pathname, int flags, int mode)
       return -1;
    }
 
-   Dmsg4(100, "d_open: pathname %s flags 0%o mode %d fd %d\n", e_dpath, flags, mode, fd);
+   Dmsg4(100, "d_open: pathname %s flags 0%o mode %d e_datafd %d\n", e_dpath, flags, mode, e_datafd);
 
-   e_mdfd = ::open(e_dpath, flags, mode);
+   e_mdfd = ::open(e_mpath, flags, mode);
    if (e_mdfd < 0) {
       berrno be;
 
-      Mmsg4(errmsg, _("d_open: pathname %s flags 0%o mode %d err %s\n"), pathname, flags, mode, be.bstrerror());
+      Mmsg4(errmsg, _("d_open: pathname %s flags 0%o mode %d err %s\n"), e_mpath, flags, mode, be.bstrerror());
       ::close(e_datafd);
       e_datafd = -1;
       return -1;
    }
 
-   Dmsg4(100, "d_open: pathname %s flags 0%o mode %d fd %d\n", pathname, flags, mode, fd);
+   Dmsg5(100, "d_open: e_mpath %s e_dpath %s flags 0%o mode %d e_mdfd %d\n", e_mpath, e_dpath, flags, mode, e_mdfd);
 
    return 12345;
 }
@@ -226,11 +226,11 @@ ssize_t exablox_device::d_read(int xfd, void *buffer, size_t count)
    if (r < 0) {
       berrno be;
 
-      Mmsg4(errmsg, _("d_read: fd %d buffer %p count %d err %s\n"), e_mdfd, buffer, count, be.bstrerror());
+      Mmsg4(errmsg, _("d_read: e_mdfd %d buffer %p count %d err %s\n"), e_mdfd, buffer, count, be.bstrerror());
       return -1;
    }
 
-   Dmsg4(100, "d_read: fd %d buffer %p count %d read %d\n", e_mdfd, buffer, count, r);
+   Dmsg4(100, "d_read: e_mdfd %d buffer %p count %d read %d\n", e_mdfd, buffer, count, r);
    return r;
 }
 
@@ -242,11 +242,11 @@ ssize_t exablox_device::d_write(int xfd, const void *buffer, size_t count)
    if (r < 0) {
       berrno be;
 
-      Mmsg4(errmsg, _("d_write: fd %d buffer %p count %d err %s\n"), e_mdfd, buffer, count, be.bstrerror());
+      Mmsg4(errmsg, _("d_write: e_mdfd %d buffer %p count %d err %s\n"), e_mdfd, buffer, count, be.bstrerror());
       return -1;
    }
 
-   Dmsg4(100, "d_write: fd %d buffer %p count %d write %d\n", e_mdfd, buffer, count, r);
+   Dmsg4(100, "d_write: e_mdfd %d buffer %p count %d write %d\n", e_mdfd, buffer, count, r);
 
    return r;
 }
@@ -259,18 +259,29 @@ int exablox_device::d_close(int xfd)
    if (r < 0) {
       berrno be;
 
-      Mmsg2(errmsg, _("d_close: fd %d err %s\n"), fd, be.bstrerror());
+      Mmsg2(errmsg, _("d_close: e_mdfd %d err %s\n"), e_mdfd, be.bstrerror());
       return -1;
    }
 
-   Dmsg1(100, "d_close: fd %d\n", fd);
+   r = ::close(e_datafd);
+   if (r < 0) {
+      berrno be;
+
+      Mmsg2(errmsg, _("d_close: e_datafd %d err %s\n"), e_datafd, be.bstrerror());
+      return -1;
+   }
+
+   Dmsg2(100, "d_close: e_datafd %d e_mdfd %d\n", e_datafd, e_mdfd);
+
+   e_mdfd = -1;
+   e_datafd = -1;
 
    return r;
 }
 
 int exablox_device::d_ioctl(int xfd, ioctl_req_t request, char *op)
 {
-   Dmsg3(100, "d_ioctl: fd %d request 0x%x op %p\n", fd, request, op);
+   Dmsg3(100, "d_ioctl: fd %d request 0x%x op %p\n", xfd, request, op);
 
    return -1;
 }
@@ -278,9 +289,6 @@ int exablox_device::d_ioctl(int xfd, ioctl_req_t request, char *op)
 boffset_t exablox_device::d_lseek(DCR *dcr, boffset_t offset, int whence)
 {
    boffset_t r;
-
-Dmsg4(100, "d_lseek: DCR %p offset %d whence %d lseek %d: dunno what to do here yet\n", dcr, offset, whence, r);
-return -1;
 
    r = ::lseek(e_mdfd, offset, whence);
    if (r < 0) {
@@ -324,12 +332,20 @@ bool exablox_device::d_truncate(DCR *dcr)
     * 3. open new file with same mode
     * 4. change ownership to original
     */
+   if (fstat(e_datafd, &st) != 0) {
+      berrno be;
+
+      Mmsg2(errmsg, _("Unable to stat data device %s. ERR=%s\n"), prt_name, be.bstrerror());
+      return false;
+   }
+
    if (fstat(e_mdfd, &st) != 0) {
       berrno be;
 
-      Mmsg2(errmsg, _("Unable to stat device %s. ERR=%s\n"), prt_name, be.bstrerror());
+      Mmsg2(errmsg, _("Unable to stat metadata device %s. ERR=%s\n"), prt_name, be.bstrerror());
       return false;
    }
+
 
 /* XXX - Tad: FIXME */
 #if 0
