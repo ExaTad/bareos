@@ -512,6 +512,11 @@ public:
    /*
     * Low level operations
     */
+   enum {
+	DH_DATADATA,
+	DH_METADATA,
+   };
+
    virtual int d_ioctl(int fd, ioctl_req_t request, char *mt_com = NULL) = 0;
    virtual int d_open(const char *pathname, int flags, int mode) = 0;
    virtual int d_close(int fd) = 0;
