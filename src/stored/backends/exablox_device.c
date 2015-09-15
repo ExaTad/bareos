@@ -311,9 +311,14 @@ int exablox_device::d_ioctl(int xfd, ioctl_req_t request, char *op)
    return -1;
 }
 
-boffset_t exablox_device::d_lseek(DCR *dcr, boffset_t offset, int whence)
+boffset_t exablox_device::d_lseek(int htype, DCR *dcr, boffset_t offset, int whence)
 {
+   int fd;
    boffset_t r;
+
+   fd = htype_to_fd(htype);
+   if (fd < 0)
+      return -1;
 
    const char *wstr = "unknown";
    switch(whence) {
@@ -328,17 +333,22 @@ boffset_t exablox_device::d_lseek(DCR *dcr, boffset_t offset, int whence)
       break;
    }
 
-   r = ::lseek(e_mdfd, offset, whence);
+   r = ::lseek(fd, offset, whence);
    if (r < 0) {
       berrno be;
 
-      Mmsg5(errmsg, _("d_lseek: DCR %p offset %d wstr %s whence %d err %s\n"), dcr, offset, wstr, whence, be.bstrerror());
+      Mmsg6(errmsg, _("d_lseek: htype %d DCR %p offset %d wstr %s whence %d err %s\n"), htype, dcr, offset, wstr, whence, be.bstrerror());
       return -1;
    }
 
-   Dmsg5(100, "d_lseek: DCR %p offset %d wstr %s whence %d lseek %d\n", dcr, offset, wstr, whence, r);
+   Dmsg6(100, "d_lseek: htype %d DCR %p offset %d wstr %s whence %d lseek %d\n", htype, dcr, offset, wstr, whence, r);
 
    return r;
+}
+
+boffset_t exablox_device::d_lseek(DCR *dcr, boffset_t offset, int whence)
+{
+   return d_lseek(DH_METADATA, dcr, offset, whence);
 }
 
 bool exablox_device::d_truncate(DCR *dcr)
