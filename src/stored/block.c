@@ -591,8 +591,14 @@ bool DCR::write_block_to_dev()
          bmicrosleep(5, 0);    /* pause a bit if busy or lots of errors */
          dev->clrerror(-1);
       }
-      status = dev->write(block->buf, (size_t)wlen);
-
+      if (dev->has_cap(CAP_DEDUP)) {
+         status = dev->d_write(dev->DH_DATADATA, rec->data, rec->data_len);
+         if (status >= 0) {
+            status = dev->d_write(dev->DH_METADATA, block->buf, wlen);
+         }
+      } else {
+         status = dev->write(block->buf, (size_t)wlen);
+      }
    } while (status == -1 && (errno == EBUSY || errno == EIO) && retry++ < 3);
 
    if (debug_block_checksum) {

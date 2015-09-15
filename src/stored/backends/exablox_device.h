@@ -49,6 +49,7 @@ public:
    int		d_close(int);
    int		d_open(const char *pathname, int flags, int mode);
    int		d_ioctl(int htype, ioctl_req_t request, char *mt = NULL);
+   boffset_t	d_lseek(int htype, DCR *dcr, boffset_t offset, int whence);
    boffset_t	d_lseek(DCR *dcr, boffset_t offset, int whence);
    ssize_t	d_read(int htype, void *buffer, size_t count);
    ssize_t	d_write(int htype, const void *buffer, size_t count);

@@ -523,6 +523,7 @@ public:
    virtual ssize_t d_read(int fd, void *buffer, size_t count) = 0;
    virtual ssize_t d_write(int fd, const void *buffer, size_t count) = 0;
    virtual boffset_t d_lseek(DCR *dcr, boffset_t offset, int whence) = 0;
+   virtual boffset_t d_lseek(int htype, DCR *dcr, boffset_t offset, int whence) = 0;
    virtual bool d_truncate(DCR *dcr) = 0;
 
    /*
