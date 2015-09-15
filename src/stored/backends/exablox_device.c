@@ -197,11 +197,11 @@ int exablox_device::d_open(const char *pathname, int flags, int mode)
    if (e_datafd < 0) {
       berrno be;
 
-      Mmsg4(errmsg, _("d_open: pathname %s flags 0%o mode %d err %s\n"), e_dpath, flags, mode, be.bstrerror());
+      Mmsg4(errmsg, _("d_open: pathname %s flags 0%o mode %d err %s\n"), pathname, flags, mode, be.bstrerror());
       return -1;
    }
 
-   Dmsg4(100, "d_open: pathname %s flags 0%o mode %d e_datafd %d\n", e_dpath, flags, mode, e_datafd);
+   Dmsg4(100, "d_open: e_dpath %s flags 0%o mode %d e_datafd %d\n", e_dpath, flags, mode, e_datafd);
 
    e_mdfd = ::open(e_mpath, flags, mode);
    if (e_mdfd < 0) {
@@ -213,40 +213,65 @@ int exablox_device::d_open(const char *pathname, int flags, int mode)
       return -1;
    }
 
-   Dmsg5(100, "d_open: e_mpath %s e_dpath %s flags 0%o mode %d e_mdfd %d\n", e_mpath, e_dpath, flags, mode, e_mdfd);
+   Dmsg4(100, "d_open: e_mpath %s flags 0%o mode %d e_mdfd %d\n", e_mpath, flags, mode, e_mdfd);
 
-   return 12345;
+   return DH_METADATA;
 }
 
-ssize_t exablox_device::d_read(int xfd, void *buffer, size_t count)
+int exablox_device::htype_to_fd(int htype)
+{
+   switch (htype) {
+   case DH_DATADATA:
+      return e_datafd;
+      break;
+   case DH_METADATA:
+      return e_mdfd;
+      break;
+   }
+
+   Mmsg1(errmsg, _("htype_to_fd: unhandled htype %d"), htype);
+   return -1;
+}
+
+ssize_t exablox_device::d_read(int htype, void *buffer, size_t count)
 {
    int r;
+   int fd;
 
-   r = ::read(e_mdfd, buffer, count);
+   fd = htype_to_fd(htype);
+   if (fd < 0)
+      return -1;
+
+   r = ::read(fd, buffer, count);
    if (r < 0) {
       berrno be;
 
-      Mmsg4(errmsg, _("d_read: e_mdfd %d buffer %p count %d err %s\n"), e_mdfd, buffer, count, be.bstrerror());
+      Mmsg5(errmsg, _("d_read: htype %d fd %d buffer %p count %d err %s\n"), htype, fd, buffer, count, be.bstrerror());
       return -1;
    }
 
-   Dmsg4(100, "d_read: e_mdfd %d buffer %p count %d read %d\n", e_mdfd, buffer, count, r);
+   Dmsg5(100, "d_read: htype %d fd %d buffer %p count %d read %d\n", htype, fd, buffer, count, r);
    return r;
 }
 
-ssize_t exablox_device::d_write(int xfd, const void *buffer, size_t count)
+ssize_t exablox_device::d_write(int htype, const void *buffer, size_t count)
 {
    int r;
+   int fd;
 
-   r = ::write(e_mdfd, buffer, count);
+   fd = htype_to_fd(htype);
+   if (fd < 0)
+      return -1;
+
+   r = ::write(fd, buffer, count);
    if (r < 0) {
       berrno be;
 
-      Mmsg4(errmsg, _("d_write: e_mdfd %d buffer %p count %d err %s\n"), e_mdfd, buffer, count, be.bstrerror());
+      Mmsg5(errmsg, _("d_write: htype %d fd %d buffer %p count %d err %s\n"), htype, fd, buffer, count, be.bstrerror());
       return -1;
    }
 
-   Dmsg4(100, "d_write: e_mdfd %d buffer %p count %d write %d\n", e_mdfd, buffer, count, r);
+   Dmsg5(100, "d_write: htype %d fd %d buffer %p count %d write %d\n", htype, fd, buffer, count, r);
 
    return r;
 }
@@ -290,15 +315,28 @@ boffset_t exablox_device::d_lseek(DCR *dcr, boffset_t offset, int whence)
 {
    boffset_t r;
 
+   const char *wstr = "unknown";
+   switch(whence) {
+   case SEEK_SET:
+      wstr = "SEEK_SET";
+      break;
+   case SEEK_CUR:
+      wstr = "SEEK_CUR";
+      break;
+   case SEEK_END:
+      wstr = "SEEK_END";
+      break;
+   }
+
    r = ::lseek(e_mdfd, offset, whence);
    if (r < 0) {
       berrno be;
 
-      Mmsg4(errmsg, _("d_lseek: DCR %p offset %d whence %d err %s\n"), dcr, offset, whence, be.bstrerror());
+      Mmsg5(errmsg, _("d_lseek: DCR %p offset %d wstr %s whence %d err %s\n"), dcr, offset, wstr, whence, be.bstrerror());
       return -1;
    }
 
-   Dmsg4(100, "d_lseek: DCR %p offset %d whence %d lseek %d\n", dcr, offset, whence, r);
+   Dmsg5(100, "d_lseek: DCR %p offset %d wstr %s whence %d lseek %d\n", dcr, offset, wstr, whence, r);
 
    return r;
 }

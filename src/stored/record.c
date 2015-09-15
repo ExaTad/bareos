@@ -395,6 +395,32 @@ static inline void write_continue_header_to_block(DEV_BLOCK *block, DEV_RECORD *
    }
 }
 
+static inline bool write_offset_to_block(DEV_BLOCK *block, boffset_t offset, DEV_RECORD *rec)
+{
+   int n;
+   uint32_t cksum;
+
+   ser_declare;
+
+   rec->remlen = block->buf_len - block->binbuf;
+
+   if (rec->remlen < sizeof(offset) + sizeof(cksum)) {
+      return false;                     /* cannot fit metadata */
+   }
+
+   cksum = bcrc32(rec->data, rec->data_len);
+
+   ser_begin(block->bufp, rec->remlen);
+   ser_int64(offset);
+   ser_int32(cksum);
+
+   n = ser_length(block->bufp);
+   block->bufp += n;
+   block->binbuf += n;
+
+   return true;
+}
+
 static inline bool write_data_to_block(DEV_BLOCK *block, DEV_RECORD *rec)
 {
    rec->remlen = block->buf_len - block->binbuf;
@@ -517,6 +543,7 @@ bail_out:
  */
 bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
 {
+   bool ok;
    bool retval = false;
    char buf1[100], buf2[100];
    DEV_BLOCK *block = dcr->block;
@@ -580,7 +607,11 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
           * may not have enough room to transfer the whole this time.
           */
          if (rec->remainder > 0) {
-            if (!write_data_to_block(block, rec)) {
+            if (dcr->dev->has_cap(CAP_DEDUP))
+               ok = write_offset_to_block(dcr, dcr->dev->d_offset(), block, rec);
+            else
+               ok = write_data_to_block(block, rec);
+            if (ok) {
                rec->state = st_header_cont;
                goto bail_out;
             }
