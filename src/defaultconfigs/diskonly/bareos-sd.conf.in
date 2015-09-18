@@ -48,6 +48,7 @@ Device {
   Name = FileStorage
   Media Type = File
   Device Type = exablox
+  Deduplication = yes;                # enable deduplication
   Archive Device = @archivedir@
   LabelMedia = yes;                   # lets Bareos label unlabeled media
   Random Access = yes;
