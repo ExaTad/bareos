@@ -806,3 +806,5 @@ public:
 #endif
 #endif
 #endif
+
+extern void dump_capabilities(const char *tag, const char *capabilities);

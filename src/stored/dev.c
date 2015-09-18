@@ -1303,3 +1303,64 @@ DEVICE::DEVICE()
 {
    m_fd = -1;
 }
+
+void dump_capabilities(const char *tag, const char *capabilities)
+{
+	static const struct {
+		int bit;
+		const char *desc;
+	} capinfo[] = {
+		{ CAP_EOF,		"EOF" },
+		{ CAP_BSR,		"BSR" },
+		{ CAP_BSF,		"BSF" },
+		{ CAP_FSR,		"FSR" },
+		{ CAP_FSF,		"FSF" },
+		{ CAP_EOM,		"EOM" },
+		{ CAP_REM,		"REM" },
+		{ CAP_RACCESS,		"RACCESS" },
+		{ CAP_AUTOMOUNT,	"AUTOMOUNT" },
+		{ CAP_LABEL,		"LABEL" },
+		{ CAP_ANONVOLS,		"ANONVOLS" },
+		{ CAP_ALWAYSOPEN,	"ALWAYSOPEN" },
+		{ CAP_AUTOCHANGER,	"AUTOCHANGER" },
+		{ CAP_OFFLINEUNMOUNT,	"OFFLINEUNMOUNT" },
+		{ CAP_STREAM,		"STREAM" },
+		{ CAP_BSFATEOM,		"BSFATEOM" },
+		{ CAP_FASTFSF,		"FASTFSF" },
+		{ CAP_TWOEOF,		"TWOEOF" },
+		{ CAP_CLOSEONPOLL,	"CLOSEONPOLL" },
+		{ CAP_POSITIONBLOCKS,	"POSITIONBLOCKS" },
+		{ CAP_MTIOCGET,		"MTIOCGET" },
+		{ CAP_REQMOUNT,		"REQMOUNT" },
+		{ CAP_CHECKLABELS,	"CHECKLABELS" },
+		{ CAP_BLOCKCHECKSUM,	"BLOCKCHECKSUM" },
+		{ CAP_IOERRATEOM,	"IOERRATEOM" },
+		{ CAP_IBMLINTAPE,	"IBMLINTAPE" },
+		{ CAP_ADJWRITESIZE,	"ADJWRITESIZE" },
+		{ CAP_DEDUP,		"DEDUP" },
+	};
+
+#define nelem(x) ((int)(sizeof(x) / sizeof(x[0])))
+	const char *c;
+	char msg[1024], *p, *ep;
+
+	p = msg;
+	ep = &msg[nelem(msg)];
+	*p = '\0';
+
+	for(int i = 0; i <= CAP_MAX; i++) {
+		if (bit_is_set(i, capabilities)) {
+			c = "<unkown>";
+			for(int j = 0; j < nelem(capinfo); j++) {
+				if(capinfo[j].bit == i) {
+					c = capinfo[j].desc;
+					break;
+				}
+			}
+			p += snprintf(p, ep - p, "%s, ", c);
+		}
+	}
+
+	Dmsg2(100, "%s: Capabilities: %s\n", tag, msg);
+#undef nelem
+}
