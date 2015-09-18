@@ -333,21 +333,33 @@ boffset_t exablox_device::d_lseek(int htype, DCR *dcr, boffset_t offset, int whe
       break;
    }
 
+   const char *hstr = "unknown";
+   switch(htype) {
+   case DH_METADATA:
+      hstr = "DH_METADATA";
+      break;
+   case DH_DATADATA:
+      hstr = "DH_DATADATA";
+      break;
+   }
+
    r = ::lseek(fd, offset, whence);
    if (r < 0) {
       berrno be;
 
-      Mmsg6(errmsg, _("d_lseek: htype %d DCR %p offset %d wstr %s whence %d err %s\n"), htype, dcr, offset, wstr, whence, be.bstrerror());
+      Mmsg7(errmsg, _("d_lseek: htype %s(%d) DCR %p offset %d wstr %s whence %d err %s\n"), hstr, htype, dcr, offset, wstr, whence, be.bstrerror());
       return -1;
    }
 
-   Dmsg6(100, "d_lseek: htype %d DCR %p offset %d wstr %s whence %d lseek %d\n", htype, dcr, offset, wstr, whence, r);
+   Dmsg7(100, "d_lseek: htype %s(%d) DCR %p offset %d wstr %s whence %d lseek %d\n", hstr, htype, dcr, offset, wstr, whence, r);
 
    return r;
 }
 
 boffset_t exablox_device::d_lseek(DCR *dcr, boffset_t offset, int whence)
 {
+   Dmsg3(100, "d_lseek: assume htype DH_METADATA DCR %p offset %d whence %d\n", dcr, offset, whence);
+
    return d_lseek(DH_METADATA, dcr, offset, whence);
 }
 
