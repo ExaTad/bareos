@@ -523,7 +523,7 @@ public:
    virtual ssize_t d_read(int fd, void *buffer, size_t count) = 0;
    virtual ssize_t d_write(int fd, const void *buffer, size_t count) = 0;
    virtual boffset_t d_lseek(DCR *dcr, boffset_t offset, int whence) = 0;
-   virtual boffset_t d_lseek(int htype, DCR *dcr, boffset_t offset, int whence) = 0;
+   virtual boffset_t d_lseek(int htype, DCR *dcr, boffset_t offset, int whence);
    virtual bool d_truncate(DCR *dcr) = 0;
 
    /*
@@ -568,6 +568,7 @@ protected:
    void set_mode(int mode);
 };
 
+inline boffset_t DEVICE::d_lseek(int htype, DCR *dcr, boffset_t offset, int whence) { errno = EIO; return -1; }
 inline const char *DEVICE::strerror() const { return errmsg; }
 inline const char *DEVICE::archive_name() const { return dev_name; }
 inline const char *DEVICE::print_name() const { return prt_name; }

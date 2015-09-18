@@ -400,11 +400,14 @@ static inline bool write_offset_to_block(DEV_BLOCK *block, DEV_RECORD *rec, boff
    int n;
    uint32_t cksum;
 
+   Dmsg3(100, "write_offset_to_block: block %p rec %p offset %d", block, rec, offset);
+
    ser_declare;
 
    rec->remlen = block->buf_len - block->binbuf;
 
-   if (rec->remlen < sizeof(offset) + sizeof(cksum)) {
+   if (rec->remlen < (sizeof(offset) + sizeof(cksum))) {
+      Dmsg0(100, "metadata doesn't fit\n");
       return false;                     /* cannot fit metadata */
    }
 
@@ -543,7 +546,6 @@ bail_out:
  */
 bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
 {
-   bool ok;
    boffset_t offset;
    bool retval = false;
    char buf1[100], buf2[100];
@@ -558,9 +560,9 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
       ASSERT(block->binbuf == (uint32_t)(block->bufp - block->buf));
       ASSERT(block->buf_len >= block->binbuf);
 
-      Dmsg6(890, "write_record_to_block() FI=%s SessId=%d Strm=%s len=%d\n"
+      Dmsg7(890, "write_record_to_block() state=%d FI=%s SessId=%d Strm=%s len=%d "
             "rem=%d remainder=%d\n",
-            FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
+            rec->state, FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
             stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
             rec->remlen, rec->remainder);
 
@@ -608,6 +610,7 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
           * may not have enough room to transfer the whole this time.
           */
          if (rec->remainder > 0) {
+            bool ok;
             if (dcr->dev->has_cap(CAP_DEDUP)) {
                offset = dcr->dev->d_lseek(dcr->dev->DH_DATADATA, dcr, 0, SEEK_CUR);
                ok = false;
@@ -619,11 +622,12 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
                ok = write_data_to_block(block, rec);
             }
 
-            if (ok) {
+            if (!ok) {
                rec->state = st_header_cont;
                goto bail_out;
             }
          }
+
          rec->remainder = 0;               /* did whole transfer */
          rec->state = st_none;
          retval = true;
