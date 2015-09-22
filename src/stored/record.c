@@ -544,7 +544,7 @@ bail_out:
  *  non-zero), and 2. The remaining bytes to write may not
  *  all fit into the block.
  */
-bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
+static bool write_record_to_meta_block(DCR *dcr, DEV_RECORD *rec)
 {
    boffset_t offset;
    bool retval = false;
@@ -560,9 +560,9 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
       ASSERT(block->binbuf == (uint32_t)(block->bufp - block->buf));
       ASSERT(block->buf_len >= block->binbuf);
 
-      Dmsg7(890, "write_record_to_block() state=%d FI=%s SessId=%d Strm=%s len=%d "
+      Dmsg8(890, "%s() state=%d FI=%s SessId=%d Strm=%s len=%d "
             "rem=%d remainder=%d\n",
-            rec->state, FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
+            __func__, rec->state, FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
             stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
             rec->remlen, rec->remainder);
 
@@ -643,6 +643,13 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
 
 bail_out:
    return retval;
+}
+
+bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
+{
+	dump_record(__func__, rec);
+
+	return write_record_to_meta_block(dcr, rec);
 }
 
 /*
@@ -855,4 +862,111 @@ bool read_record_from_block(DCR *dcr, DEV_RECORD *rec)
          stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len);
 
    return true;                       /* transferred full record */
+}
+
+
+const char* stream_to_str(int32_t stream, char *buf, int bufsz)
+{
+	const char *s;
+
+	switch(stream) {
+	default:
+		snprintf(buf, bufsz, "<Unknown> %d", stream);
+		return buf;
+	case STREAM_NONE:			s = "STREAM_NONE";			break;
+	case STREAM_UNIX_ATTRIBUTES:		s = "STREAM_UNIX_ATTRIBUTES";		break;
+	case STREAM_FILE_DATA:			s = "STREAM_FILE_DATA";			break;
+//	case STREAM_MD5_SIGNATURE:		s = "STREAM_MD5_SIGNATURE";		break;
+	case STREAM_MD5_DIGEST:			s = "STREAM_MD5_DIGEST";		break;
+	case STREAM_GZIP_DATA:			s = "STREAM_GZIP_DATA";			break;
+	case STREAM_UNIX_ATTRIBUTES_EX:		s = "STREAM_UNIX_ATTRIBUTES_EX";	break;
+	case STREAM_SPARSE_DATA:		s = "STREAM_SPARSE_DATA";		break;
+	case STREAM_SPARSE_GZIP_DATA:		s = "STREAM_SPARSE_GZIP_DATA";		break;
+	case STREAM_PROGRAM_NAMES:		s = "STREAM_PROGRAM_NAMES";		break;
+	case STREAM_PROGRAM_DATA:		s = "STREAM_PROGRAM_DATA";		break;
+//	case STREAM_SHA1_SIGNATURE:		s = "STREAM_SHA1_SIGNATURE";		break;
+	case STREAM_SHA1_DIGEST:		s = "STREAM_SHA1_DIGEST";		break;
+	case STREAM_WIN32_DATA:			s = "STREAM_WIN32_DATA";		break;
+	case STREAM_WIN32_GZIP_DATA:		s = "STREAM_WIN32_GZIP_DATA";		break;
+	case STREAM_MACOS_FORK_DATA:		s = "STREAM_MACOS_FORK_DATA";		break;
+	case STREAM_HFSPLUS_ATTRIBUTES:		s = "STREAM_HFSPLUS_ATTRIBUTES";	break;
+	case STREAM_UNIX_ACCESS_ACL:		s = "STREAM_UNIX_ACCESS_ACL";		break;
+	case STREAM_UNIX_DEFAULT_ACL:		s = "STREAM_UNIX_DEFAULT_ACL";		break;
+	case STREAM_SHA256_DIGEST:		s = "STREAM_SHA256_DIGEST";		break;
+	case STREAM_SHA512_DIGEST:		s = "STREAM_SHA512_DIGEST";		break;
+	case STREAM_SIGNED_DIGEST:		s = "STREAM_SIGNED_DIGEST";		break;
+	case STREAM_ENCRYPTED_FILE_DATA:	s = "STREAM_ENCRYPTED_FILE_DATA";	break;
+	case STREAM_ENCRYPTED_WIN32_DATA:	s = "STREAM_ENCRYPTED_WIN32_DATA";	break;
+	case STREAM_ENCRYPTED_SESSION_DATA:	s = "STREAM_ENCRYPTED_SESSION_DATA";	break;
+	case STREAM_ENCRYPTED_FILE_GZIP_DATA:	s = "STREAM_ENCRYPTED_FILE_GZIP_DATA";	break;
+	case STREAM_ENCRYPTED_WIN32_GZIP_DATA:	s = "STREAM_ENCRYPTED_WIN32_GZIP_DATA";	break;
+	case STREAM_ENCRYPTED_MACOS_FORK_DATA:	s = "STREAM_ENCRYPTED_MACOS_FORK_DATA";	break;
+	case STREAM_PLUGIN_NAME:		s = "STREAM_PLUGIN_NAME";		break;
+	case STREAM_PLUGIN_DATA:		s = "STREAM_PLUGIN_DATA";		break;
+	case STREAM_RESTORE_OBJECT:		s = "STREAM_RESTORE_OBJECT";		break;
+	}
+
+	snprintf(buf, bufsz, "%s", s);
+
+	return buf;
+}
+
+const char* findex_to_str(int32_t index, char *buf, size_t bufsz)
+{
+	const char *s;
+
+	if(index >= 0) {
+		snprintf(buf, bufsz, "<User> %d", index);
+		return buf;
+	}
+
+	switch(index) {
+	default:	s = "<unknown>";	break;
+	case PRE_LABEL:	s = "PRE_LABEL";	break;
+	case VOL_LABEL:	s = "VOL_LABEL";	break;
+	case EOM_LABEL:	s = "EOM_LABEL";	break;
+	case SOS_LABEL:	s = "SOS_LABEL";	break;
+	case EOS_LABEL:	s = "EOS_LABEL";	break;
+	case EOT_LABEL:	s = "EOT_LABEL";	break;
+	case SOB_LABEL:	s = "SOB_LABEL";	break;
+	case EOB_LABEL:	s = "EOB_LABEL";	break;
+	}
+
+	snprintf(buf, bufsz, "%s", s);
+
+	return buf;
+}
+
+void dump_record(const char *tag, DEV_RECORD *rec)
+{
+	char stream[128];
+	char findex[128];
+
+
+	Dmsg2(100, "%s: rec %p\n", tag, rec);
+
+	Dmsg3(100, "%-14s	next %p prev %p\n", "link", rec->link.next, rec->link.prev);
+	Dmsg2(100, "%-14s	%u\n", "File", rec->File);
+	Dmsg2(100, "%-14s	%u\n", "Block", rec->Block);
+	Dmsg2(100, "%-14s	%u\n", "VolSessionId", rec->VolSessionId);
+	Dmsg2(100, "%-14s	%u\n", "VolSessionTime", rec->VolSessionTime);
+	Dmsg2(100, "%-14s	%s\n", "FileIndex", findex_to_str(rec->FileIndex, findex, sizeof(findex)));
+	Dmsg2(100, "%-14s	%s\n", "Stream", stream_to_str(rec->Stream, stream, sizeof(stream)));
+	Dmsg2(100, "%-14s	%d\n", "maskedStream", rec->maskedStream);
+	Dmsg2(100, "%-14s	%u\n", "data_len", rec->data_len);
+	Dmsg2(100, "%-14s	%u\n", "remainder", rec->remainder);
+	Dmsg2(100, "%-14s	%u\n", "remlen", rec->remlen);
+	for(int i = 0; i < nelem(rec->state_bits); i++)
+		Dmsg3(100, "%-11s[%d]	%2.2x\n", "state_bits", i, (uint8_t)rec->state_bits[i]);
+	Dmsg2(100, "%-14s	%u\n", "state", rec->state);
+	Dmsg2(100, "%-14s	%p\n", "bsr", rec->bsr);
+	for(int i = 0; i < nelem(rec->ser_buf); i++)
+		Dmsg3(100, "%-11s[%d]	%2.2x\n", "ser_buf", i, (uint8_t)rec->ser_buf[i]);
+	Dmsg2(100, "%-14s	%p\n", "data", rec->data);
+	Dmsg2(100, "%-14s	%d\n", "match_stat", rec->match_stat);
+	Dmsg2(100, "%-14s	%u\n", "last_VolSessionId", rec->last_VolSessionId);
+	Dmsg2(100, "%-14s	%u\n", "last_VolSessionTime", rec->last_VolSessionTime);
+	Dmsg2(100, "%-14s	%d\n", "last_FileIndex", rec->last_FileIndex);
+	Dmsg2(100, "%-14s	%d\n", "last_Stream", rec->last_Stream);
+	Dmsg2(100, "%-14s	%s\n", "own_mempool", rec->own_mempool ? "true" : "false");
 }

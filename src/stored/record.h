@@ -260,3 +260,5 @@ struct DELAYED_DATA_STREAM {
 #define READ_NO_FILEINDEX -999999
 
 #endif
+
+extern void dump_record(const char *tag, DEV_RECORD *rec);

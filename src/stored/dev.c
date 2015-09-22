@@ -1340,7 +1340,6 @@ void dump_capabilities(const char *tag, const char *capabilities)
 		{ CAP_DEDUP,		"DEDUP" },
 	};
 
-#define nelem(x) ((int)(sizeof(x) / sizeof(x[0])))
 	const char *c;
 	char msg[1024], *p, *ep;
 
@@ -1362,5 +1361,4 @@ void dump_capabilities(const char *tag, const char *capabilities)
 	}
 
 	Dmsg2(100, "%s: Capabilities: %s\n", tag, msg);
-#undef nelem
 }

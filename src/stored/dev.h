@@ -807,4 +807,5 @@ public:
 #endif
 #endif
 
+#define nelem(x) ((int)(sizeof(x) / sizeof(x[0])))
 extern void dump_capabilities(const char *tag, const char *capabilities);
