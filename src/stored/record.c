@@ -295,70 +295,18 @@ void free_record(DEV_RECORD *rec)
    Dmsg0(950, "Leave free_record.\n");
 }
 
-static inline bool write_header_to_block(DEV_BLOCK *block, DEV_RECORD *rec)
+static inline size_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *rec, int32_t Stream)
 {
    ser_declare;
-
-   rec->remlen = block->buf_len - block->binbuf;
 
    /*
     * Require enough room to write a full header
     */
-   if (rec->remlen >= WRITE_RECHDR_LENGTH) {
-      ser_begin(block->bufp, WRITE_RECHDR_LENGTH);
-      if (BLOCK_VER == 1) {
-         ser_uint32(rec->VolSessionId);
-         ser_uint32(rec->VolSessionTime);
-      } else {
-         block->VolSessionId = rec->VolSessionId;
-         block->VolSessionTime = rec->VolSessionTime;
-      }
-      ser_int32(rec->FileIndex);
-      ser_int32(rec->Stream);
-      ser_uint32(rec->data_len);
+   if (block_write_navail(block) < WRITE_RECHDR_LENGTH)
+      return -1;
 
-      block->bufp += WRITE_RECHDR_LENGTH;
-      block->binbuf += WRITE_RECHDR_LENGTH;
-      rec->remlen -= WRITE_RECHDR_LENGTH;
-      rec->remainder = rec->data_len;
-      if (rec->FileIndex > 0) {
-         /*
-          * If data record, update what we have in this block
-          */
-         if (block->FirstIndex == 0) {
-            block->FirstIndex = rec->FileIndex;
-         }
-         block->LastIndex = rec->FileIndex;
-      }
-   } else {
-      rec->remainder = rec->data_len + WRITE_RECHDR_LENGTH;
-      return false;
-   }
-
-   return true;
-}
-
-static inline void write_continue_header_to_block(DEV_BLOCK *block, DEV_RECORD *rec)
-{
-   ser_declare;
-
-   rec->remlen = block->buf_len - block->binbuf;
-
-   /*
-    * We have unwritten bytes from a previous
-    * time. Presumably we have a new buffer (possibly
-    * containing a volume label), so the new header
-    * should be able to fit in the block -- otherwise we have
-    * an error.  Note, we have to continue splitting the
-    * data record if it is longer than the block.
-    *
-    * First, write the header.
-    *
-    * Every time we write a header and it is a continuation
-    * of a previous partially written record, we store the
-    * Stream as -Stream in the record header.
-    */
    ser_begin(block->bufp, WRITE_RECHDR_LENGTH);
+
    if (BLOCK_VER == 1) {
       ser_uint32(rec->VolSessionId);
       ser_uint32(rec->VolSessionTime);
@@ -366,24 +314,15 @@ static inline void write_continue_header_to_block(DEV_BLOCK *block, DEV_RECORD *
       block->VolSessionId = rec->VolSessionId;
       block->VolSessionTime = rec->VolSessionTime;
    }
-   ser_int32(rec->FileIndex);
-   if (rec->remainder > rec->data_len) {
-      ser_int32(rec->Stream);      /* normal full header */
-      ser_uint32(rec->data_len);
-      rec->remainder = rec->data_len; /* must still do data record */
-   } else {
-      ser_int32(-rec->Stream);     /* mark this as a continuation record */
-      ser_uint32(rec->remainder);  /* bytes to do */
-   }
 
-   /*
-    * Require enough room to write a full header
-    */
-   ASSERT(rec->remlen >= WRITE_RECHDR_LENGTH);
+   ser_int32(rec->FileIndex);
+   ser_int32(Stream);
+
+   ser_uint32(rec->remainder);   /* each header tracks remaining user bytes to write */
 
    block->bufp += WRITE_RECHDR_LENGTH;
    block->binbuf += WRITE_RECHDR_LENGTH;
-   rec->remlen -= WRITE_RECHDR_LENGTH;
+
    if (rec->FileIndex > 0) {
       /*
        * If data record, update what we have in this block
@@ -393,27 +332,28 @@ static inline void write_continue_header_to_block(DEV_BLOCK *block, DEV_RECORD *
       }
       block->LastIndex = rec->FileIndex;
    }
+
+   return WRITE_RECHDR_LENGTH;
 }
 
-static inline bool write_offset_to_block(DEV_BLOCK *block, DEV_RECORD *rec, boffset_t offset)
+static inline bool write_offset_to_meta_block(DEV_BLOCK *block, boffset_t offset, uint32_t cksum)
 {
-   int n;
-   uint32_t cksum;
+   size_t n;
 
-   Dmsg3(100, "write_offset_to_block: block %p rec %p offset %d", block, rec, offset);
+   Dmsg4(100, "%s: block %p offset %lld cksum 0x%x", __func__, block, offset, cksum);
 
    ser_declare;
 
-   rec->remlen = block->buf_len - block->binbuf;
+   n = block->buf_len - block->binbuf;
 
-   if (rec->remlen < (sizeof(offset) + sizeof(cksum))) {
-      Dmsg0(100, "metadata doesn't fit\n");
-      return false;                     /* cannot fit metadata */
+   if (n < (sizeof(offset) + sizeof(cksum))) {
+      Dmsg0(100, "offset + cksum metadata doesn't fit\n");
+      return false;
    }
 
-   cksum = bcrc32((u_int8_t*)rec->data, rec->data_len);
+//   cksum = bcrc32((u_int8_t*)rec->data, rec->data_len);
 
-   ser_begin(block->bufp, rec->remlen);
+   ser_begin(block->bufp, n);
    ser_int64(offset);
    ser_int32(cksum);
 
@@ -424,46 +364,38 @@ static inline bool write_offset_to_block(DEV_BLOCK *block, DEV_RECORD *rec, boff
    return true;
 }
 
-static inline bool write_data_to_block(DEV_BLOCK *block, DEV_RECORD *rec)
+static inline size_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
 {
-   rec->remlen = block->buf_len - block->binbuf;
+   size_t n;
 
-   /*
-    * Write as much of data as possible
-    */
-   if (rec->remlen >= rec->remainder) {
-      memcpy(block->bufp, rec->data + (rec->data_len - rec->remainder), rec->remainder);
-      block->bufp += rec->remainder;
-      block->binbuf += rec->remainder;
-   } else {
-      memcpy(block->bufp, rec->data + (rec->data_len - rec->remainder), rec->remlen);
+   n = block_write_navail(block);
+   if (n > rec->remainder)
+      n = rec->remainder;
+
+   memcpy(block->bufp, rec->data + (rec->data_len - rec->remainder), n);
+   block->bufp += n;
+   block->binbuf += n;
+
 #ifdef xxxxxSMCHECK
-      if (!sm_check_rtn(__FILE__, __LINE__, False)) {
-         /*
-          * We damaged a buffer
-          */
-         Dmsg6(0, "Damaged block FI=%s SessId=%d Strm=%s len=%d\n"
-            "rem=%d remainder=%d\n",
-            FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
-            stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
-            rec->remlen, rec->remainder);
-         Dmsg5(0, "Damaged block: bufp=%x binbuf=%d buf_len=%d rem=%d moved=%d\n",
-            block->bufp, block->binbuf, block->buf_len, block->buf_len-block->binbuf,
-            rec->remlen);
-         Dmsg2(0, "Damaged block: buf=%x binbuffrombuf=%d \n",
-            block->buf, block->bufp-block->buf);
-         Emsg0(M_ABORT, 0, _("Damaged buffer\n"));
-      }
+   if (!sm_check_rtn(__FILE__, __LINE__, False)) {
+      /*
+       * We damaged a buffer
+       */
+      Dmsg7(0, "Damaged block FI=%s SessId=%d Strm=%s len=%d\n"
+         "n=%d rem=%d remainder=%d\n",
+         FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
+         stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
+         n, block_write_navail(block), rec->remainder);
+      Dmsg5(0, "Damaged block: bufp=%x binbuf=%d buf_len=%d rem=%d moved=%d\n",
+         block->bufp, block->binbuf, block->buf_len, block_write_navail(block),
+         n);
+      Dmsg2(0, "Damaged block: buf=%x binbuffrombuf=%d \n",
+         block->buf, block->bufp-block->buf);
+      Emsg0(M_ABORT, 0, _("Damaged buffer\n"));
+   }
 #endif
 
-      block->bufp += rec->remlen;
-      block->binbuf += rec->remlen;
-      rec->remainder -= rec->remlen;
-
-      return false;                /* did partial transfer */
-   }
-
-   return true;
+   return n;
 }
 
 /*
@@ -544,9 +476,9 @@ bail_out:
  *  non-zero), and 2. The remaining bytes to write may not
  *  all fit into the block.
  */
-static bool write_record_to_meta_block(DCR *dcr, DEV_RECORD *rec)
+static bool write_record_to_main_block(DCR *dcr, DEV_RECORD *rec)
 {
-   boffset_t offset;
+   size_t n;
    bool retval = false;
    char buf1[100], buf2[100];
    DEV_BLOCK *block = dcr->block;
@@ -564,7 +496,7 @@ static bool write_record_to_meta_block(DCR *dcr, DEV_RECORD *rec)
             "rem=%d remainder=%d\n",
             __func__, rec->state, FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
             stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
-            rec->remlen, rec->remainder);
+            block_write_navail(block), rec->remainder);
 
       switch (rec->state) {
       case st_none:
@@ -572,57 +504,88 @@ static bool write_record_to_meta_block(DCR *dcr, DEV_RECORD *rec)
           * Figure out what to do
           */
          rec->state = st_header;
-         continue;              /* go to next state */
+         rec->remainder = rec->data_len;   /* length of data remaining to write */
+         continue;                         /* goto st_header */
 
       case st_header:
-         /*
+	 /*
           * Write header
-          *
-          * If rec->remainder is non-zero, we have been called a
-          * second (or subsequent) time to finish writing a record
-          * that did not previously fit into the block.
           */
-          if (!write_header_to_block(block, rec)) {
-             goto bail_out;      /* write block then come back here */
-          }
-          rec->state = st_data;  /* after header, now write data */
-          continue;
+	 n = write_header_to_block(block, rec, rec->Stream);
+	 if (n < 0) {
+	    /*
+	     * the header did not fit into the block, so flush the current
+	     * block and come back to st_header and try again on the next block.
+	     */
+	    goto bail_out;
+	 }
 
-      /*
-       * Write continuation header
-       */
+	 if (block_write_navail(block) == 0) {
+	    /*
+	     * The header fit, but no bytes of data will fit,
+	     * so flush this block and start the next block with a
+	     * continuation header.
+	     */
+	    rec->state = st_header_cont;
+	    goto bail_out;
+	 }
+
+	 /*
+	  * The header fit, and at least one byte of data will fit,
+	  * so move to the st_data state and start filling the block
+	  * with data bytes
+	  */
+	 rec->state = st_data;
+	 continue;
+
       case st_header_cont:
-         write_continue_header_to_block(block, rec);
+	 /*
+	  * Write continuation header
+	  */
+	 n = write_header_to_block(block, rec, -rec->Stream);
+         if (n < 0) {
+            /*
+             * The continuation header wouldn't fit, which is impossible
+             * unless something is broken
+             */
+	    Emsg0(M_ABORT, 0, _("couldn't write continuation header\n"));
+         }
+
+	 /*
+          * After successfully writing a continuation header, we always start writing
+          * data, even if none will fit into this block.
+          */
          rec->state = st_data;
-         if (rec->remlen == 0) {
+
+         if (block_write_navail(block) == 0) {
+            /*
+             * The header fit, but no bytes of data will fit,
+             * so flush the block and start the next block with
+             * data bytes
+             */
             goto bail_out;       /* Partial transfer */
          }
+
          continue;
 
-      /*
-       * Write normal data
-       */
       case st_data:
-         /*
-          * Write data
-          *
+	 /*
+	  * Write normal data
+	  *
           * Part of it may have already been transferred, and we
           * may not have enough room to transfer the whole this time.
           */
          if (rec->remainder > 0) {
-            bool ok;
-            if (dcr->dev->has_cap(CAP_DEDUP)) {
-               offset = dcr->dev->d_lseek(dcr->dev->DH_DATADATA, dcr, 0, SEEK_CUR);
-               ok = false;
-               if (offset >= 0) {
-                  ok = write_offset_to_block(block, rec, offset);
-               }
-            }
-            else {
-               ok = write_data_to_block(block, rec);
-            }
+            n = write_data_to_block(block, rec);
 
-            if (!ok) {
+            rec->remainder -= n;
+
+            if (rec->remainder > 0) {
+               /*
+                * Could not fit all of the data bytes into this block, so
+                * flush the current block, and start the next block with a
+                * continuation header
+                */
                rec->state = st_header_cont;
                goto bail_out;
             }
@@ -635,6 +598,7 @@ static bool write_record_to_meta_block(DCR *dcr, DEV_RECORD *rec)
 
       default:
          Dmsg0(000, "Something went wrong. Default state.\n");
+	 Emsg1(M_ABORT, 0, _("Something went wrong. Unknown state %d.\n"), rec->state);
          rec->state = st_none;
          retval = true;
          goto bail_out;
@@ -645,11 +609,64 @@ bail_out:
    return retval;
 }
 
+#if 0
+static bool write_record_to_data_block(DCR *dcr, DEV_RECORD *rec, boffset_t *roffset, uint32_t *rcksum)
+{
+	bool ok;
+	int savail;
+	int davail;
+	uint8_t *src;
+	uint8_t *dst;
+	uint32_t cksum;
+	boffset_t offset;
+
+	offset = dcr->dev->d_lseek(dcr->dev->DH_DATADATA, dcr, 0, SEEK_CUR);
+	if (offset < 0)
+		return false;
+
+	src = (uint8_t*)rec->data + (rec->data_len - rec->remainder);
+	savail = rec->remainder;
+
+	dst = block->bufp;
+	davail = block->buf_len - block->binbuf;
+	if(savail > davail)
+		savail = davail;
+
+	memcpy(dst, rec->data + (rec->data_len - rec->remainder), rec->remainder);
+	cksum = bcrc32(src, savail);
+
+	block->bufp += rec->remainder;
+	block->binbuf += rec->remainder;
+
+	*roffset = offset;
+	*rcksum = cksum;
+
+	return true;
+}
+#endif
+
 bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
 {
 	dump_record(__func__, rec);
 
-	return write_record_to_meta_block(dcr, rec);
+	switch(rec->Stream) {
+	default:
+		return write_record_to_main_block(dcr, rec);
+	case STREAM_FILE_DATA:
+		return write_record_to_main_block(dcr, rec);
+/*
+		if (!dcr->dev->has_cap(CAP_DEDUP))
+			return write_record_to_main_block(dcr, rec);
+			
+		boffset_t offset;
+		uint32_t cksum;
+		if (!write_record_to_data_block(dcr, rec, &offset, &cksum))
+			return false
+		if (!write_offset_to_main_block(dcr->block, offset, cksum))
+			return false
+		return true;
+*/
+	}
 }
 
 /*
@@ -662,11 +679,11 @@ bool can_write_record_to_block(DEV_BLOCK *block, DEV_RECORD *rec)
 {
    uint32_t remlen;
 
-   remlen = block->buf_len - block->binbuf;
+   remlen = block_write_navail(block);
    if (rec->remainder == 0) {
       if (remlen >= WRITE_RECHDR_LENGTH) {
          remlen -= WRITE_RECHDR_LENGTH;
-         rec->remainder = rec->data_len;
+         rec->remainder = rec->data_len;			/* side effect */
       } else {
          return false;
       }
@@ -955,7 +972,6 @@ void dump_record(const char *tag, DEV_RECORD *rec)
 	Dmsg2(100, "%-14s	%d\n", "maskedStream", rec->maskedStream);
 	Dmsg2(100, "%-14s	%u\n", "data_len", rec->data_len);
 	Dmsg2(100, "%-14s	%u\n", "remainder", rec->remainder);
-	Dmsg2(100, "%-14s	%u\n", "remlen", rec->remlen);
 	for(int i = 0; i < nelem(rec->state_bits); i++)
 		Dmsg3(100, "%-11s[%d]	%2.2x\n", "state_bits", i, (uint8_t)rec->state_bits[i]);
 	Dmsg2(100, "%-14s	%u\n", "state", rec->state);
