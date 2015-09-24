@@ -883,74 +883,74 @@ bool read_record_from_block(DCR *dcr, DEV_RECORD *rec)
 
 const char* stream_to_str(int32_t stream, char *buf, int bufsz)
 {
-	const char *s;
+   const char *s;
 
-	switch(stream) {
-	default:
-		snprintf(buf, bufsz, "<Unknown> %d", stream);
-		return buf;
-	case STREAM_NONE:			s = "STREAM_NONE";			break;
-	case STREAM_UNIX_ATTRIBUTES:		s = "STREAM_UNIX_ATTRIBUTES";		break;
-	case STREAM_FILE_DATA:			s = "STREAM_FILE_DATA";			break;
-//	case STREAM_MD5_SIGNATURE:		s = "STREAM_MD5_SIGNATURE";		break;
-	case STREAM_MD5_DIGEST:			s = "STREAM_MD5_DIGEST";		break;
-	case STREAM_GZIP_DATA:			s = "STREAM_GZIP_DATA";			break;
-	case STREAM_UNIX_ATTRIBUTES_EX:		s = "STREAM_UNIX_ATTRIBUTES_EX";	break;
-	case STREAM_SPARSE_DATA:		s = "STREAM_SPARSE_DATA";		break;
-	case STREAM_SPARSE_GZIP_DATA:		s = "STREAM_SPARSE_GZIP_DATA";		break;
-	case STREAM_PROGRAM_NAMES:		s = "STREAM_PROGRAM_NAMES";		break;
-	case STREAM_PROGRAM_DATA:		s = "STREAM_PROGRAM_DATA";		break;
-//	case STREAM_SHA1_SIGNATURE:		s = "STREAM_SHA1_SIGNATURE";		break;
-	case STREAM_SHA1_DIGEST:		s = "STREAM_SHA1_DIGEST";		break;
-	case STREAM_WIN32_DATA:			s = "STREAM_WIN32_DATA";		break;
-	case STREAM_WIN32_GZIP_DATA:		s = "STREAM_WIN32_GZIP_DATA";		break;
-	case STREAM_MACOS_FORK_DATA:		s = "STREAM_MACOS_FORK_DATA";		break;
-	case STREAM_HFSPLUS_ATTRIBUTES:		s = "STREAM_HFSPLUS_ATTRIBUTES";	break;
-	case STREAM_UNIX_ACCESS_ACL:		s = "STREAM_UNIX_ACCESS_ACL";		break;
-	case STREAM_UNIX_DEFAULT_ACL:		s = "STREAM_UNIX_DEFAULT_ACL";		break;
-	case STREAM_SHA256_DIGEST:		s = "STREAM_SHA256_DIGEST";		break;
-	case STREAM_SHA512_DIGEST:		s = "STREAM_SHA512_DIGEST";		break;
-	case STREAM_SIGNED_DIGEST:		s = "STREAM_SIGNED_DIGEST";		break;
-	case STREAM_ENCRYPTED_FILE_DATA:	s = "STREAM_ENCRYPTED_FILE_DATA";	break;
-	case STREAM_ENCRYPTED_WIN32_DATA:	s = "STREAM_ENCRYPTED_WIN32_DATA";	break;
-	case STREAM_ENCRYPTED_SESSION_DATA:	s = "STREAM_ENCRYPTED_SESSION_DATA";	break;
-	case STREAM_ENCRYPTED_FILE_GZIP_DATA:	s = "STREAM_ENCRYPTED_FILE_GZIP_DATA";	break;
-	case STREAM_ENCRYPTED_WIN32_GZIP_DATA:	s = "STREAM_ENCRYPTED_WIN32_GZIP_DATA";	break;
-	case STREAM_ENCRYPTED_MACOS_FORK_DATA:	s = "STREAM_ENCRYPTED_MACOS_FORK_DATA";	break;
-	case STREAM_PLUGIN_NAME:		s = "STREAM_PLUGIN_NAME";		break;
-	case STREAM_PLUGIN_DATA:		s = "STREAM_PLUGIN_DATA";		break;
-	case STREAM_RESTORE_OBJECT:		s = "STREAM_RESTORE_OBJECT";		break;
-	}
+   switch(stream) {
+   default:
+      snprintf(buf, bufsz, "<Unknown> %d", stream);
+      return buf;
+   case STREAM_NONE:                      s="NONE";                      break;
+   case STREAM_UNIX_ATTRIBUTES:           s="UNIX_ATTRIBUTES";           break;
+   case STREAM_FILE_DATA:                 s="FILE_DATA";                 break;
+// case STREAM_MD5_SIGNATURE:             s="MD5_SIGNATURE";             break;
+   case STREAM_MD5_DIGEST:                s="MD5_DIGEST";                break;
+   case STREAM_GZIP_DATA:                 s="GZIP_DATA";                 break;
+   case STREAM_UNIX_ATTRIBUTES_EX:        s="UNIX_ATTRIBUTES_EX";        break;
+   case STREAM_SPARSE_DATA:               s="SPARSE_DATA";               break;
+   case STREAM_SPARSE_GZIP_DATA:          s="SPARSE_GZIP_DATA";          break;
+   case STREAM_PROGRAM_NAMES:             s="PROGRAM_NAMES";             break;
+   case STREAM_PROGRAM_DATA:              s="PROGRAM_DATA";              break;
+// case STREAM_SHA1_SIGNATURE:            s="SHA1_SIGNATURE";            break;
+   case STREAM_SHA1_DIGEST:               s="SHA1_DIGEST";               break;
+   case STREAM_WIN32_DATA:                s="WIN32_DATA";                break;
+   case STREAM_WIN32_GZIP_DATA:           s="WIN32_GZIP_DATA";           break;
+   case STREAM_MACOS_FORK_DATA:           s="MACOS_FORK_DATA";           break;
+   case STREAM_HFSPLUS_ATTRIBUTES:        s="HFSPLUS_ATTRIBUTES";        break;
+   case STREAM_UNIX_ACCESS_ACL:           s="UNIX_ACCESS_ACL";           break;
+   case STREAM_UNIX_DEFAULT_ACL:          s="UNIX_DEFAULT_ACL";          break;
+   case STREAM_SHA256_DIGEST:             s="SHA256_DIGEST";             break;
+   case STREAM_SHA512_DIGEST:             s="SHA512_DIGEST";             break;
+   case STREAM_SIGNED_DIGEST:             s="SIGNED_DIGEST";             break;
+   case STREAM_ENCRYPTED_FILE_DATA:       s="ENCRYPTED_FILE_DATA";       break;
+   case STREAM_ENCRYPTED_WIN32_DATA:      s="ENCRYPTED_WIN32_DATA";      break;
+   case STREAM_ENCRYPTED_SESSION_DATA:    s="ENCRYPTED_SESSION_DATA";    break;
+   case STREAM_ENCRYPTED_FILE_GZIP_DATA:  s="ENCRYPTED_FILE_GZIP_DATA";  break;
+   case STREAM_ENCRYPTED_WIN32_GZIP_DATA: s="ENCRYPTED_WIN32_GZIP_DATA"; break;
+   case STREAM_ENCRYPTED_MACOS_FORK_DATA: s="ENCRYPTED_MACOS_FORK_DATA"; break;
+   case STREAM_PLUGIN_NAME:               s="PLUGIN_NAME";               break;
+   case STREAM_PLUGIN_DATA:               s="PLUGIN_DATA";               break;
+   case STREAM_RESTORE_OBJECT:            s="RESTORE_OBJECT";            break;
+   }
 
-	snprintf(buf, bufsz, "%s", s);
+   snprintf(buf, bufsz, "STREAM_%s", s);
 
-	return buf;
+   return buf;
 }
 
 const char* findex_to_str(int32_t index, char *buf, size_t bufsz)
 {
-	const char *s;
+   const char *s;
 
-	if(index >= 0) {
-		snprintf(buf, bufsz, "<User> %d", index);
-		return buf;
-	}
+   if(index >= 0) {
+      snprintf(buf, bufsz, "<User> %d", index);
+      return buf;
+   }
 
-	switch(index) {
-	default:	s = "<unknown>";	break;
-	case PRE_LABEL:	s = "PRE_LABEL";	break;
-	case VOL_LABEL:	s = "VOL_LABEL";	break;
-	case EOM_LABEL:	s = "EOM_LABEL";	break;
-	case SOS_LABEL:	s = "SOS_LABEL";	break;
-	case EOS_LABEL:	s = "EOS_LABEL";	break;
-	case EOT_LABEL:	s = "EOT_LABEL";	break;
-	case SOB_LABEL:	s = "SOB_LABEL";	break;
-	case EOB_LABEL:	s = "EOB_LABEL";	break;
-	}
+   switch(index) {
+   default:        s = "<unknown>"; break;
+   case PRE_LABEL: s = "PRE_LABEL"; break;
+   case VOL_LABEL: s = "VOL_LABEL"; break;
+   case EOM_LABEL: s = "EOM_LABEL"; break;
+   case SOS_LABEL: s = "SOS_LABEL"; break;
+   case EOS_LABEL: s = "EOS_LABEL"; break;
+   case EOT_LABEL: s = "EOT_LABEL"; break;
+   case SOB_LABEL: s = "SOB_LABEL"; break;
+   case EOB_LABEL: s = "EOB_LABEL"; break;
+   }
 
-	snprintf(buf, bufsz, "%s", s);
+   snprintf(buf, bufsz, "%s", s);
 
-	return buf;
+   return buf;
 }
 
 void dump_record(const char *tag, DEV_RECORD *rec)
@@ -988,11 +988,11 @@ void dump_record(const char *tag, DEV_RECORD *rec)
 
 const char* record_state_str(rec_state state)
 {
-	switch(state) {
-	default:		return "<unknown>";
-	case st_none:		return "st_none";
-	case st_header:		return "st_header";
-	case st_header_cont:	return "st_header_cont";
-	case st_data:		return "st_data";
-	}
+   switch(state) {
+   default:             return "<unknown>";
+   case st_none:        return "st_none";
+   case st_header:      return "st_header";
+   case st_header_cont: return "st_header_cont";
+   case st_data:        return "st_data";
+   }
 }
