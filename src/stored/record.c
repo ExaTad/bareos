@@ -597,7 +597,6 @@ static bool write_record_to_main_block(DCR *dcr, DEV_RECORD *rec)
          goto bail_out;
 
       default:
-         Dmsg0(000, "Something went wrong. Default state.\n");
 	 Emsg1(M_ABORT, 0, _("Something went wrong. Unknown state %d.\n"), rec->state);
          rec->state = st_none;
          retval = true;
