@@ -261,3 +261,4 @@ struct DELAYED_DATA_STREAM {
 #endif
 
 extern void dump_record(const char *tag, DEV_RECORD *rec);
+extern const char* record_state_str(rec_state state);

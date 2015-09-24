@@ -492,9 +492,9 @@ static bool write_record_to_main_block(DCR *dcr, DEV_RECORD *rec)
       ASSERT(block->binbuf == (uint32_t)(block->bufp - block->buf));
       ASSERT(block->buf_len >= block->binbuf);
 
-      Dmsg8(890, "%s() state=%d FI=%s SessId=%d Strm=%s len=%d "
+      Dmsg9(890, "%s() state=%d (%s) FI=%s SessId=%d Strm=%s len=%d "
             "rem=%d remainder=%d\n",
-            __func__, rec->state, FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
+            __func__, rec->state, record_state_str(rec->state), FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
             stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
             block_write_navail(block), rec->remainder);
 
@@ -973,7 +973,7 @@ void dump_record(const char *tag, DEV_RECORD *rec)
 	Dmsg2(100, "%-14s	%u\n", "remainder", rec->remainder);
 	for(int i = 0; i < nelem(rec->state_bits); i++)
 		Dmsg3(100, "%-11s[%d]	%2.2x\n", "state_bits", i, (uint8_t)rec->state_bits[i]);
-	Dmsg2(100, "%-14s	%u\n", "state", rec->state);
+	Dmsg3(100, "%-14s	%u (%s)\n", "state", rec->state, record_state_str(rec->state));
 	Dmsg2(100, "%-14s	%p\n", "bsr", rec->bsr);
 	for(int i = 0; i < nelem(rec->ser_buf); i++)
 		Dmsg3(100, "%-11s[%d]	%2.2x\n", "ser_buf", i, (uint8_t)rec->ser_buf[i]);
@@ -984,4 +984,15 @@ void dump_record(const char *tag, DEV_RECORD *rec)
 	Dmsg2(100, "%-14s	%d\n", "last_FileIndex", rec->last_FileIndex);
 	Dmsg2(100, "%-14s	%d\n", "last_Stream", rec->last_Stream);
 	Dmsg2(100, "%-14s	%s\n", "own_mempool", rec->own_mempool ? "true" : "false");
+}
+
+const char* record_state_str(rec_state state)
+{
+	switch(state) {
+	default:		return "<unknown>";
+	case st_none:		return "st_none";
+	case st_header:		return "st_header";
+	case st_header_cont:	return "st_header_cont";
+	case st_data:		return "st_data";
+	}
 }
