@@ -223,6 +223,17 @@ const char *stream_to_ascii(char *buf, int stream, int fi)
    }
 }
 
+const char *record_state_to_ascii(rec_state state)
+{
+   switch(state) {
+   default:             return "<unknown>";
+   case st_none:        return "st_none";
+   case st_header:      return "st_header";
+   case st_header_cont: return "st_header_cont";
+   case st_data:        return "st_data";
+   }
+}
+
 /*
  * Return a new record entity
  */
@@ -336,7 +347,7 @@ static inline size_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *r
    return WRITE_RECHDR_LENGTH;
 }
 
-static inline bool write_offset_to_meta_block(DEV_BLOCK *block, boffset_t offset, uint32_t cksum)
+static inline bool write_offset_to_block(DEV_BLOCK *block, boffset_t offset, uint32_t cksum)
 {
    size_t n;
 
@@ -476,7 +487,7 @@ bail_out:
  *  non-zero), and 2. The remaining bytes to write may not
  *  all fit into the block.
  */
-static bool write_record_to_main_block(DCR *dcr, DEV_RECORD *rec)
+bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
 {
    size_t n;
    bool retval = false;
@@ -494,7 +505,7 @@ static bool write_record_to_main_block(DCR *dcr, DEV_RECORD *rec)
 
       Dmsg9(890, "%s() state=%d (%s) FI=%s SessId=%d Strm=%s len=%d "
             "rem=%d remainder=%d\n",
-            __func__, rec->state, record_state_str(rec->state), FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
+            __func__, rec->state, record_state_to_ascii(rec->state), FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
             stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
             block_write_navail(block), rec->remainder);
 
@@ -608,9 +619,11 @@ bail_out:
    return retval;
 }
 
-#if 0
 static bool write_record_to_data_block(DCR *dcr, DEV_RECORD *rec, boffset_t *roffset, uint32_t *rcksum)
 {
+ Emsg1(M_ABORT, 0, _("%s: Not Implemented\n"), __func__);
+return false;
+#if 0
 	bool ok;
 	int savail;
 	int davail;
@@ -641,30 +654,27 @@ static bool write_record_to_data_block(DCR *dcr, DEV_RECORD *rec, boffset_t *rof
 	*rcksum = cksum;
 
 	return true;
-}
 #endif
+}
 
-bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
+bool new_write_record_to_block(DCR *dcr, DEV_RECORD *rec)
 {
 	dump_record(__func__, rec);
 
 	switch(rec->Stream) {
 	default:
-		return write_record_to_main_block(dcr, rec);
+		return write_record_to_block(dcr, rec);
 	case STREAM_FILE_DATA:
-		return write_record_to_main_block(dcr, rec);
-/*
 		if (!dcr->dev->has_cap(CAP_DEDUP))
-			return write_record_to_main_block(dcr, rec);
+			return write_record_to_block(dcr, rec);
 			
 		boffset_t offset;
 		uint32_t cksum;
 		if (!write_record_to_data_block(dcr, rec, &offset, &cksum))
-			return false
-		if (!write_offset_to_main_block(dcr->block, offset, cksum))
-			return false
+			return false;
+		if (!write_offset_to_block(dcr->block, offset, cksum))
+			return false;
 		return true;
-*/
 	}
 }
 
@@ -674,28 +684,12 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
  *  Returns: false on failure
  *           true  on success (all bytes can be written)
  */
-bool can_write_record_to_block(DEV_BLOCK *block, DEV_RECORD *rec)
+bool can_write_record_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
 {
-   uint32_t remlen;
-
-   remlen = block_write_navail(block);
-   if (rec->remainder == 0) {
-      if (remlen >= WRITE_RECHDR_LENGTH) {
-         remlen -= WRITE_RECHDR_LENGTH;
-         rec->remainder = rec->data_len;			/* side effect */
-      } else {
-         return false;
-      }
-   } else {
-      return false;
-   }
-   if (rec->remainder > 0 && remlen < rec->remainder) {
-      return false;
-   }
-   return true;
+   return block_write_navail(block) >= WRITE_RECHDR_LENGTH;
 }
 
-uint64_t get_record_address(DEV_RECORD *rec)
+uint64_t get_record_address(const DEV_RECORD *rec)
 {
    return ((uint64_t)rec->File)<<32 | rec->Block;
 }
@@ -953,46 +947,34 @@ const char* findex_to_str(int32_t index, char *buf, size_t bufsz)
    return buf;
 }
 
-void dump_record(const char *tag, DEV_RECORD *rec)
+void dump_record(const char *tag, const DEV_RECORD *rec)
 {
-	char stream[128];
-	char findex[128];
-
-
-	Dmsg2(100, "%s: rec %p\n", tag, rec);
-
-	Dmsg3(100, "%-14s	next %p prev %p\n", "link", rec->link.next, rec->link.prev);
-	Dmsg2(100, "%-14s	%u\n", "File", rec->File);
-	Dmsg2(100, "%-14s	%u\n", "Block", rec->Block);
-	Dmsg2(100, "%-14s	%u\n", "VolSessionId", rec->VolSessionId);
-	Dmsg2(100, "%-14s	%u\n", "VolSessionTime", rec->VolSessionTime);
-	Dmsg2(100, "%-14s	%s\n", "FileIndex", findex_to_str(rec->FileIndex, findex, sizeof(findex)));
-	Dmsg2(100, "%-14s	%s\n", "Stream", stream_to_str(rec->Stream, stream, sizeof(stream)));
-	Dmsg2(100, "%-14s	%d\n", "maskedStream", rec->maskedStream);
-	Dmsg2(100, "%-14s	%u\n", "data_len", rec->data_len);
-	Dmsg2(100, "%-14s	%u\n", "remainder", rec->remainder);
-	for(int i = 0; i < nelem(rec->state_bits); i++)
-		Dmsg3(100, "%-11s[%d]	%2.2x\n", "state_bits", i, (uint8_t)rec->state_bits[i]);
-	Dmsg3(100, "%-14s	%u (%s)\n", "state", rec->state, record_state_str(rec->state));
-	Dmsg2(100, "%-14s	%p\n", "bsr", rec->bsr);
-	for(int i = 0; i < nelem(rec->ser_buf); i++)
-		Dmsg3(100, "%-11s[%d]	%2.2x\n", "ser_buf", i, (uint8_t)rec->ser_buf[i]);
-	Dmsg2(100, "%-14s	%p\n", "data", rec->data);
-	Dmsg2(100, "%-14s	%d\n", "match_stat", rec->match_stat);
-	Dmsg2(100, "%-14s	%u\n", "last_VolSessionId", rec->last_VolSessionId);
-	Dmsg2(100, "%-14s	%u\n", "last_VolSessionTime", rec->last_VolSessionTime);
-	Dmsg2(100, "%-14s	%d\n", "last_FileIndex", rec->last_FileIndex);
-	Dmsg2(100, "%-14s	%d\n", "last_Stream", rec->last_Stream);
-	Dmsg2(100, "%-14s	%s\n", "own_mempool", rec->own_mempool ? "true" : "false");
-}
-
-const char* record_state_str(rec_state state)
-{
-   switch(state) {
-   default:             return "<unknown>";
-   case st_none:        return "st_none";
-   case st_header:      return "st_header";
-   case st_header_cont: return "st_header_cont";
-   case st_data:        return "st_data";
-   }
+   char stream[128];
+   char findex[128];
+   
+   Dmsg2(100, "%s: rec %p\n", tag, rec);
+   
+   Dmsg3(100, "%-14s	next %p prev %p\n", "link", rec->link.next, rec->link.prev);
+   Dmsg2(100, "%-14s	%u\n", "File", rec->File);
+   Dmsg2(100, "%-14s	%u\n", "Block", rec->Block);
+   Dmsg2(100, "%-14s	%u\n", "VolSessionId", rec->VolSessionId);
+   Dmsg2(100, "%-14s	%u\n", "VolSessionTime", rec->VolSessionTime);
+   Dmsg2(100, "%-14s	%s\n", "FileIndex", findex_to_str(rec->FileIndex, findex, sizeof(findex)));
+   Dmsg2(100, "%-14s	%s\n", "Stream", stream_to_str(rec->Stream, stream, sizeof(stream)));
+   Dmsg2(100, "%-14s	%d\n", "maskedStream", rec->maskedStream);
+   Dmsg2(100, "%-14s	%u\n", "data_len", rec->data_len);
+   Dmsg2(100, "%-14s	%u\n", "remainder", rec->remainder);
+      for(int i = 0; i < nelem(rec->state_bits); i++)
+   Dmsg3(100, "%-11s[%d]	%2.2x\n", "state_bits", i, (uint8_t)rec->state_bits[i]);
+   Dmsg3(100, "%-14s	%u (%s)\n", "state", rec->state, record_state_to_ascii(rec->state));
+   Dmsg2(100, "%-14s	%p\n", "bsr", rec->bsr);
+      for(int i = 0; i < nelem(rec->ser_buf); i++)
+   Dmsg3(100, "%-11s[%d]	%2.2x\n", "ser_buf", i, (uint8_t)rec->ser_buf[i]);
+   Dmsg2(100, "%-14s	%p\n", "data", rec->data);
+   Dmsg2(100, "%-14s	%d\n", "match_stat", rec->match_stat);
+   Dmsg2(100, "%-14s	%u\n", "last_VolSessionId", rec->last_VolSessionId);
+   Dmsg2(100, "%-14s	%u\n", "last_VolSessionTime", rec->last_VolSessionTime);
+   Dmsg2(100, "%-14s	%d\n", "last_FileIndex", rec->last_FileIndex);
+   Dmsg2(100, "%-14s	%d\n", "last_Stream", rec->last_Stream);
+   Dmsg2(100, "%-14s	%s\n", "own_mempool", rec->own_mempool ? "true" : "false");
 }
