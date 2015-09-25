@@ -33,6 +33,11 @@ build/
 config.log
 config.out
 config.status
+
+debian/bareos-filedaemon-ceph-plugin.install
+debian/bareos-storage-ceph.install
+debian/bareos-storage-ceph.postinst
+
 debian/bareos-bat.install
 debian/bareos-bat.postinst
 debian/bareos-bat.substvars
