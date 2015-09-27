@@ -306,7 +306,7 @@ void free_record(DEV_RECORD *rec)
    Dmsg0(950, "Leave free_record.\n");
 }
 
-static inline size_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *rec, int32_t Stream)
+static inline ssize_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *rec, int32_t Stream)
 {
    ser_declare;
 
@@ -375,9 +375,9 @@ static inline bool write_offset_to_block(DEV_BLOCK *block, boffset_t offset, uin
    return true;
 }
 
-static inline size_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
+static inline ssize_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
 {
-   size_t n;
+   ssize_t n;
 
    n = block_write_navail(block);
    if (n > rec->remainder)
@@ -489,7 +489,7 @@ bail_out:
  */
 bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
 {
-   size_t n;
+   ssize_t n;
    bool retval = false;
    char buf1[100], buf2[100];
    DEV_BLOCK *block = dcr->block;
@@ -504,8 +504,9 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
       ASSERT(block->buf_len >= block->binbuf);
 
       Dmsg9(890, "%s() state=%d (%s) FI=%s SessId=%d Strm=%s len=%d "
-            "rem=%d remainder=%d\n",
-            __func__, rec->state, record_state_to_ascii(rec->state), FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
+            "block_navail=%d remainder=%d\n",
+            __func__, rec->state, record_state_to_ascii(rec->state),
+	    FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
             stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
             block_write_navail(block), rec->remainder);
 
@@ -588,6 +589,13 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
           */
          if (rec->remainder > 0) {
             n = write_data_to_block(block, rec);
+            if (n < 0) {
+               /*
+                * error appending data to block should be impossible
+                * unless something is broken
+                */
+	       Emsg0(M_ABORT, 0, _("data write error\n"));
+            }
 
             rec->remainder -= n;
 
