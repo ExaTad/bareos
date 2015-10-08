@@ -185,6 +185,7 @@ static RES_ITEM dev_items[] = {
    { "RequiresMount", CFG_TYPE_BIT, ITEM(res_dev.cap_bits), CAP_REQMOUNT, CFG_ITEM_DEFAULT, "off", NULL, NULL },
    { "OfflineOnUnmount", CFG_TYPE_BIT, ITEM(res_dev.cap_bits), CAP_OFFLINEUNMOUNT, CFG_ITEM_DEFAULT, "off", NULL, NULL },
    { "BlockChecksum", CFG_TYPE_BIT, ITEM(res_dev.cap_bits), CAP_BLOCKCHECKSUM, CFG_ITEM_DEFAULT, "on", NULL, NULL },
+   { "Deduplication", CFG_TYPE_BIT, ITEM(res_dev.cap_bits), CAP_DEDUP, CFG_ITEM_DEFAULT, "off", NULL, NULL },
    { "AutoSelect", CFG_TYPE_BOOL, ITEM(res_dev.autoselect), 0, CFG_ITEM_DEFAULT, "true", NULL, NULL },
    { "ChangerDevice", CFG_TYPE_STRNAME, ITEM(res_dev.changer_name), 0, 0, NULL, NULL, NULL },
    { "ChangerCommand", CFG_TYPE_STRNAME, ITEM(res_dev.changer_command), 0, 0, NULL, NULL, NULL },
@@ -281,6 +282,7 @@ static s_kw dev_types[] = {
    { "object", B_OBJECT_STORE_DEV },
    { "rados", B_RADOS_DEV },
    { "cephfs", B_CEPHFS_DEV },
+   { "exablox", B_EXABLOX_DEV },
    { "elasto", B_ELASTO_DEV },
    { NULL, 0 }
 };

@@ -347,6 +347,34 @@ static inline ssize_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *
    return WRITE_RECHDR_LENGTH;
 }
 
+static inline bool write_offset_to_block(DEV_BLOCK *block, boffset_t offset, uint32_t cksum)
+{
+   size_t n;
+
+   Dmsg4(100, "%s: block %p offset %lld cksum 0x%x", __func__, block, offset, cksum);
+
+   ser_declare;
+
+   n = block->buf_len - block->binbuf;
+
+   if (n < (sizeof(offset) + sizeof(cksum))) {
+      Dmsg0(100, "offset + cksum metadata doesn't fit\n");
+      return false;
+   }
+
+//   cksum = bcrc32((u_int8_t*)rec->data, rec->data_len);
+
+   ser_begin(block->bufp, n);
+   ser_int64(offset);
+   ser_int32(cksum);
+
+   n = ser_length(block->bufp);
+   block->bufp += n;
+   block->binbuf += n;
+
+   return true;
+}
+
 static inline ssize_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
 {
    ssize_t n;

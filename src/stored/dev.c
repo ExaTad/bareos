@@ -102,6 +102,7 @@
 #ifdef HAVE_WIN32
 #include "backends/win32_file_device.h"
 #else
+#include "backends/exablox_device.h"
 #include "backends/unix_file_device.h"
 #endif
 
