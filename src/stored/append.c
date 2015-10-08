@@ -219,6 +219,10 @@ fi_checked:
                stream_to_ascii(buf1, dcr->rec->Stream,
                dcr->rec->FileIndex), dcr->rec->data_len);
 
+         if (dcr->has_cap(CAP_DEDUP) && rec->Stream == STREAM_FILE_DATA) {
+		(data_file_offset, cksum) := dcr->write_data_to_data_file();
+		(dcr->rec->data, dcr->rec->datal_len) = serialize(data_file_offset, cksum)
+
          ok = dcr->write_record();
          if (!ok) {
             Dmsg2(90, "Got write_block_to_dev error on device %s. %s\n",

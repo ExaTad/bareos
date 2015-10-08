@@ -448,6 +448,8 @@ bail_out:
 /*
  * Write a Record to the block
  *
+ *  Mutates the record
+ *
  *  Returns: false on failure (none or partially written)
  *           true  on success (all bytes written)
  *
@@ -465,11 +467,6 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
    bool retval = false;
    char buf1[100], buf2[100];
    DEV_BLOCK *block = dcr->block;
-
-   /*
-    * After this point the record is in nrec not rec e.g. its either converted
-    * or is just a pointer to the same as the rec pointer being passed in.
-    */
 
    while (1) {
       ASSERT(block->binbuf == (uint32_t)(block->bufp - block->buf));
@@ -607,7 +604,7 @@ bail_out:
  */
 bool can_write_record_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
 {
-   return block_write_navail(block) >= WRITE_RECHDR_LENGTH;
+   return block_write_navail(block) >= WRITE_RECHDR_LENGTH + rec->remainder;
 }
 
 uint64_t get_record_address(const DEV_RECORD *rec)
