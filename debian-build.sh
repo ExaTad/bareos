@@ -115,4 +115,3 @@ before_build
 before_install
 before_script
 script
-s
