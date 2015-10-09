@@ -220,8 +220,19 @@ fi_checked:
                dcr->rec->FileIndex), dcr->rec->data_len);
 
          if (dcr->has_cap(CAP_DEDUP) && rec->Stream == STREAM_FILE_DATA) {
-		(data_file_offset, cksum) := dcr->write_data_to_data_file();
-		(dcr->rec->data, dcr->rec->datal_len) = serialize(data_file_offset, cksum)
+	    uint64_t offset;
+            uint32_t cksum;
+            uint8_t serbuf[sizeof(offset) + sizeof(cksum)];
+
+            if !(dcr->write_data_to_data_file(&offset, &cksum)) {
+               Dmsg2(90, "Got write_data_to_data_file error on device %s. %s\n",
+                     dcr->dev->print_name(), dcr->dev->bstrerror());
+               break;
+            }
+            dcr->serialize_dedup_reference(serbuf, sizeof(serbuf), offset, cksum);
+            dcr->rec->data = serbuf;
+            dcr->rec->datal_len = sizeof(serbuf);
+        }
 
          ok = dcr->write_record();
          if (!ok) {
