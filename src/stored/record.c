@@ -347,32 +347,62 @@ static inline ssize_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *
    return WRITE_RECHDR_LENGTH;
 }
 
-static inline bool write_offset_to_block(DEV_BLOCK *block, boffset_t offset, uint32_t cksum)
+/*
+ * Writes rec->data into the dev->DH_DATADATA file,
+ * If successful (returns true), the offset
+ * the data begins at and the checksum of the data
+ * are given to the caller in roffset and rcksum, respectively
+ */
+bool DCR::write_record_to_data_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roffset, uint32_t *rcksum)
 {
-   size_t n;
+   Dmsg5(100, "%s: dcr %p rec %p rec->data %p rec->data_len %d\n", __func__, dcr, rec, rec->data, rec->data_len);
 
-   Dmsg4(100, "%s: block %p offset %lld cksum 0x%x", __func__, block, offset, cksum);
+   ssize_t r;
+   DEVICE *dev;
+   boffset_t offset;
+   uint32_t cksum;
 
-   ser_declare;
+   dev = dcr->dev;
 
-   n = block->buf_len - block->binbuf;
-
-   if (n < (sizeof(offset) + sizeof(cksum))) {
-      Dmsg0(100, "offset + cksum metadata doesn't fit\n");
+   offset = dev->d_lseek(dev->DH_DATADATA, dcr, 0, SEEK_CUR);
+   if (offset < 0) {
       return false;
    }
 
-//   cksum = bcrc32((u_int8_t*)rec->data, rec->data_len);
+   r = dev->d_write(dev->DH_DATADATA, rec->data, rec->data_len);
+   if (r < 0) {
+      return false;
+   }
+   if (r != rec->data_len) {
+      Dmsg3(0, "%s: short write. got %d expected %d\n", __func__, r, rec->data_len);
+      return false;
+   }
 
-   ser_begin(block->bufp, n);
-   ser_int64(offset);
-   ser_int32(cksum);
+   cksum = bcrc32((uint8_t*)rec->data, rec->data_len);
 
-   n = ser_length(block->bufp);
-   block->bufp += n;
-   block->binbuf += n;
+   *roffset = offset;
+   *rcksum = cksum;
 
    return true;
+}
+
+ssize_t DCR::serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t offset, uint32_t cksum)
+{
+   Dmsg5(100, "%s: buf %p bufsz %d offset %lld cksum 0x%x\n", __func__, buf, bufsz, offset, cksum);
+
+   if (bufsz < (sizeof(offset) + sizeof(cksum))) {
+      Dmsg2(100, "offset + cksum metadata doesn't fit need %d got %d\n", sizeof(offset)+sizeof(cksum), bufsz);
+      return -1;
+   }
+
+   ser_declare;
+
+   ser_begin(buf, n);
+
+   ser_uint64(offset);
+   ser_uint32(cksum);
+
+   return ser_length(buf);
 }
 
 static inline ssize_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
@@ -910,11 +940,11 @@ void dump_record(const char *tag, const DEV_RECORD *rec)
    Dmsg2(100, "%-14s	%d\n", "maskedStream", rec->maskedStream);
    Dmsg2(100, "%-14s	%u\n", "data_len", rec->data_len);
    Dmsg2(100, "%-14s	%u\n", "remainder", rec->remainder);
-      for(int i = 0; i < (sizeof(rec->state_bits) / sizeof(rec->state_bits[0])); i++)
+      for(size_t i = 0; i < (sizeof(rec->state_bits) / sizeof(rec->state_bits[0])); i++)
    Dmsg3(100, "%-11s[%d]	%2.2x\n", "state_bits", i, (uint8_t)rec->state_bits[i]);
    Dmsg3(100, "%-14s	%u (%s)\n", "state", rec->state, record_state_to_ascii(rec->state));
    Dmsg2(100, "%-14s	%p\n", "bsr", rec->bsr);
-      for(int i = 0; i < (sizeof(rec->ser_buf) / sizeof(rec->ser_buf[0])); i++)
+      for(size_t i = 0; i < (sizeof(rec->ser_buf) / sizeof(rec->ser_buf[0])); i++)
    Dmsg3(100, "%-11s[%d]	%2.2x\n", "ser_buf", i, (uint8_t)rec->ser_buf[i]);
    Dmsg2(100, "%-14s	%p\n", "data", rec->data);
    Dmsg2(100, "%-14s	%d\n", "match_stat", rec->match_stat);

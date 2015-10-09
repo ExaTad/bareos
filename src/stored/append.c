@@ -206,6 +206,10 @@ fi_checked:
        */
       rec_data = dcr->rec->data;
       while ((n = bget_msg(bs)) > 0 && !jcr->is_job_canceled()) {
+	 uint64_t offset;
+         uint32_t cksum;
+         POOLMEM serbuf[sizeof(offset) + sizeof(cksum)];  /* XXX - Tad: faking POOLMEM is probably a no-no... */
+
          dcr->rec->VolSessionId = jcr->VolSessionId;
          dcr->rec->VolSessionTime = jcr->VolSessionTime;
          dcr->rec->FileIndex = file_index;
@@ -219,19 +223,23 @@ fi_checked:
                stream_to_ascii(buf1, dcr->rec->Stream,
                dcr->rec->FileIndex), dcr->rec->data_len);
 
-         if (dcr->has_cap(CAP_DEDUP) && rec->Stream == STREAM_FILE_DATA) {
-	    uint64_t offset;
-            uint32_t cksum;
-            uint8_t serbuf[sizeof(offset) + sizeof(cksum)];
-
-            if !(dcr->write_data_to_data_file(&offset, &cksum)) {
+         if (dcr->dev->has_cap(CAP_DEDUP) && dcr->rec->Stream == STREAM_FILE_DATA) {
+            if (!dcr->write_record_to_data_file(dcr, dcr->rec, &offset, &cksum)) {
                Dmsg2(90, "Got write_data_to_data_file error on device %s. %s\n",
                      dcr->dev->print_name(), dcr->dev->bstrerror());
                break;
             }
-            dcr->serialize_dedup_reference(serbuf, sizeof(serbuf), offset, cksum);
+
+            ssize_t r;
+            r = dcr->serialize_record_reference(serbuf, sizeof(serbuf), offset, cksum);
+            if (r < 0) {
+               Dmsg1(90, "Got serialize_record_reference error on device %s\n",
+                     dcr->dev->print_name());
+               break;
+            }
+
             dcr->rec->data = serbuf;
-            dcr->rec->datal_len = sizeof(serbuf);
+            dcr->rec->data_len = r;
         }
 
          ok = dcr->write_record();
