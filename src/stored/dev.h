@@ -514,7 +514,7 @@ public:
     */
    enum {
 	DH_DATADATA,
-	DH_METADATA,
+	DH_METADATA
    };
 
    virtual int d_ioctl(int fd, ioctl_req_t request, char *mt_com = NULL) = 0;
@@ -710,7 +710,7 @@ public:
     * Methods in record.c
     */
    bool write_record();
-   bool write_record_to_data_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roffset, uint32_t *rcksum);
+   bool write_record_to_payload_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roffset, uint32_t *rcksum);
    ssize_t serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t offset, uint32_t cksum);
 
    /*

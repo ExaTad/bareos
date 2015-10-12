@@ -353,7 +353,7 @@ static inline ssize_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *
  * the data begins at and the checksum of the data
  * are given to the caller in roffset and rcksum, respectively
  */
-bool DCR::write_record_to_data_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roffset, uint32_t *rcksum)
+bool DCR::write_record_to_payload_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roffset, uint32_t *rcksum)
 {
    Dmsg5(100, "%s: dcr %p rec %p rec->data %p rec->data_len %d\n", __func__, dcr, rec, rec->data, rec->data_len);
 
