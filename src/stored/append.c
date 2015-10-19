@@ -49,11 +49,14 @@ void possible_incomplete_job(JCR *jcr, int32_t last_file_index)
 bool do_append_data(JCR *jcr, BSOCK *bs, const char *what)
 {
    int32_t n, file_index, stream, last_file_index, job_elapsed;
+   uint32_t payload_cksum;
+   uint64_t payload_offset;
    bool ok = true;
    char buf1[100];
    DCR *dcr = jcr->dcr;
    DEVICE *dev;
-   POOLMEM *rec_data;
+   POOLMEM *rec_data = NULL,
+           *payload_data = NULL;
    char ec[50];
 
    if (!dcr) {
@@ -123,6 +126,14 @@ bool do_append_data(JCR *jcr, BSOCK *bs, const char *what)
       Jmsg2(jcr, M_FATAL, 0, _("Network send error to %s. ERR=%s\n"),
             what, be.bstrerror(bs->b_errno));
       ok = false;
+   }
+
+   if (dcr->dev->has_cap(CAP_DEDUP)) {
+      payload_data = get_pool_memory(PM_RECORD);
+      payload_data = check_pool_memory_size(payload_data,
+                                            sizeof(dcr->rec->data_len) +
+                                            sizeof(payload_offset) +
+                                            sizeof(payload_cksum));
    }
 
    /*
@@ -219,6 +230,29 @@ fi_checked:
                stream_to_ascii(buf1, dcr->rec->Stream,
                dcr->rec->FileIndex), dcr->rec->data_len);
 
+         if (dcr->dev->has_cap(CAP_DEDUP) && stream_is_dedupable(dcr->rec->Stream)) {
+            ssize_t len;
+
+            if (!dcr->write_record_to_payload_file(dcr, &payload_offset, &payload_cksum)) {
+               Dmsg2(90, "Got write_record_to_payload_file error on device %s. %s\n",
+                     dcr->dev->print_name(), dcr->dev->bstrerror());
+               break;
+            }
+
+            len = dcr->serialize_record_reference(payload_data,
+                                                  sizeof_pool_memory(payload_data),
+                                                  dcr->rec->data_len,
+                                                  payload_offset, payload_cksum);
+            if (len < 0) {
+               Dmsg1(90, "Got serialize_record_reference error on device %s\n",
+                     dcr->dev->print_name());
+               break;
+            }
+
+            dcr->rec->data = payload_data;
+            dcr->rec->data_len = len;
+         }
+
          ok = dcr->write_record();
          if (!ok) {
             Dmsg2(90, "Got write_block_to_dev error on device %s. %s\n",
@@ -247,6 +281,10 @@ fi_checked:
          ok = false;
          break;
       }
+   }
+
+   if (payload_data) {
+      free_pool_memory(payload_data);
    }
 
    /*

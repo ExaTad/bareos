@@ -188,6 +188,7 @@ bool read_records(DCR *dcr,
                   bool mount_cb(DCR *dcr));
 
 /* record.c */
+bool stream_is_dedupable(int32_t stream);
 const char *FI_to_ascii(char *buf, int fi);
 const char *stream_to_ascii(char *buf, int stream, int fi);
 void dump_record(const char *tag, const DEV_RECORD *rec);
