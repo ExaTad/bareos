@@ -102,6 +102,7 @@
 #ifdef HAVE_WIN32
 #include "backends/win32_file_device.h"
 #else
+#include "backends/exablox_device.h"
 #include "backends/unix_file_device.h"
 #endif
 
@@ -222,6 +223,9 @@ static inline DEVICE *m_init_dev(JCR *jcr, DEVRES *device, bool new_init)
       dev = New(win32_file_device);
       break;
 #else
+   case B_EXABLOX_DEV:
+      dev = New(exablox_device);
+      break;
    case B_FILE_DEV:
       dev = New(unix_file_device);
       break;

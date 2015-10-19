@@ -94,6 +94,7 @@ enum {
    B_OBJECT_STORE_DEV,
    B_RADOS_DEV,
    B_CEPHFS_DEV,
+   B_EXABLOX_DEV,
    B_ELASTO_DEV
 };
 
@@ -163,13 +164,14 @@ enum {
    CAP_BLOCKCHECKSUM = 23,            /* Create/test block checksum */
    CAP_IOERRATEOM = 24,               /* IOError at EOM */
    CAP_IBMLINTAPE = 25,               /* Using IBM lin_tape driver */
-   CAP_ADJWRITESIZE = 26              /* Adjust write size to min/max */
+   CAP_ADJWRITESIZE = 26,             /* Adjust write size to min/max */
+   CAP_DEDUP = 27                     /* This device supports deduplication */
 };
 
 /*
  * Keep this set to the last entry in the enum.
  */
-#define CAP_MAX CAP_ADJWRITESIZE
+#define CAP_MAX CAP_DEDUP
 
 /*
  * Make sure you have enough bits to store all above bit fields.
@@ -365,6 +367,7 @@ public:
                                   dev_type == B_OBJECT_STORE_DEV ||
                                   dev_type == B_RADOS_DEV ||
                                   dev_type == B_CEPHFS_DEV ||
+                                  dev_type == B_EXABLOX_DEV ||
                                   dev_type == B_ELASTO_DEV); }
    bool is_fifo() const { return dev_type == B_FIFO_DEV; }
    bool is_vtl() const  { return dev_type == B_VTL_DEV; }
@@ -509,12 +512,18 @@ public:
    /*
     * Low level operations
     */
+   enum {
+	DH_DATADATA,
+	DH_METADATA
+   };
+
    virtual int d_ioctl(int fd, ioctl_req_t request, char *mt_com = NULL) = 0;
    virtual int d_open(const char *pathname, int flags, int mode) = 0;
    virtual int d_close(int fd) = 0;
    virtual ssize_t d_read(int fd, void *buffer, size_t count) = 0;
    virtual ssize_t d_write(int fd, const void *buffer, size_t count) = 0;
    virtual boffset_t d_lseek(DCR *dcr, boffset_t offset, int whence) = 0;
+   virtual boffset_t d_lseek(int htype, DCR *dcr, boffset_t offset, int whence);
    virtual bool d_truncate(DCR *dcr) = 0;
 
    /*
@@ -559,6 +568,7 @@ protected:
    void set_mode(int mode);
 };
 
+inline boffset_t DEVICE::d_lseek(int htype, DCR *dcr, boffset_t offset, int whence) { errno = EIO; return -1; }
 inline const char *DEVICE::strerror() const { return errmsg; }
 inline const char *DEVICE::archive_name() const { return dev_name; }
 inline const char *DEVICE::print_name() const { return prt_name; }
@@ -700,6 +710,8 @@ public:
     * Methods in record.c
     */
    bool write_record();
+   bool write_record_to_payload_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roffset, uint32_t *rcksum);
+   ssize_t serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t offset, uint32_t cksum);
 
    /*
     * Methods in reserve.c
