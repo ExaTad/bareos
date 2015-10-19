@@ -46,9 +46,9 @@ void possible_incomplete_job(JCR *jcr, int32_t last_file_index)
 /*
  * These are data streams that are considered for Dedup.
  */
-static bool stream_is_dedupable(int32_t Stream)
+static bool stream_is_dedupable(int32_t stream)
 {
-   switch (dcr->rec->Stream) {
+   switch (stream) {
    case STREAM_FILE_DATA:
    case STREAM_SPARSE_DATA:
    case STREAM_WIN32_DATA:
