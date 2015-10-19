@@ -29,6 +29,31 @@
 #include "stored.h"
 
 /*
+ * These are data streams that are considered for deduplication.
+ */
+bool stream_is_dedupable(int32_t stream)
+{
+   if (stream < 0) {
+      stream = -stream;
+   }
+
+   stream &= STREAMMASK_TYPE;
+
+   switch (stream) {
+   case STREAM_FILE_DATA:
+   case STREAM_SPARSE_DATA:
+   case STREAM_WIN32_DATA:
+   case STREAM_MACOS_FORK_DATA:
+   case STREAM_COMPRESSED_DATA:
+   case STREAM_SPARSE_COMPRESSED_DATA:
+   case STREAM_WIN32_COMPRESSED_DATA:
+      return true;
+   }
+
+   return false;
+}
+
+/*
  * Convert a FileIndex into a printable
  * ASCII string.  Not reentrant.
  *
@@ -403,6 +428,119 @@ static inline ssize_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *
    return WRITE_RECHDR_LENGTH;
 }
 
+/*
+ * Writes rec->data into the payload file,
+ * If successful (returns true), the offset
+ * the data begins at and the checksum of the data
+ * are given to the caller in roffset and rcksum, respectively
+ */
+bool DCR::write_record_to_payload_file(DCR *dcr, uint64_t *roffset, uint32_t *rcksum)
+{
+   ssize_t len;
+   boffset_t offset;
+   uint32_t cksum;
+
+   Dmsg5(100, "%s: dcr %p rec %p rec->data %p rec->data_len %d\n", __func__, dcr, rec, rec->data, rec->data_len);
+
+   offset = dev->d_lseek(-1, dcr, 0, SEEK_CUR);
+   if (offset < 0) {
+      return false;
+   }
+
+   len = dev->d_write(-1, rec->data, rec->data_len);
+   if (len < 0) {
+      return false;
+   }
+   if (len != rec->data_len) {
+      Dmsg3(0, "%s: short write. got %d expected %d\n", __func__, len, rec->data_len);
+      return false;
+   }
+
+   cksum = bcrc32((uint8_t*)rec->data, rec->data_len);
+
+   *roffset = offset;
+   *rcksum = cksum;
+
+   return true;
+}
+
+bool DCR::read_record_from_payload_file(DCR *dcr, POOLMEM *buf, ssize_t size, boffset_t offset, uint32_t cksum)
+{
+   ssize_t len;
+   boffset_t roffset;
+   uint32_t rcksum;
+
+   Dmsg5(100, "%s: dcr %p buf %p size %d offset %d cksum 0x%x\n", dcr, buf, size, offset, cksum);
+
+   roffset = dev->d_lseek(-1, dcr, offset, SEEK_SET);
+   if (roffset != offset) {
+      Dmsg3(100, "%s: d_lseek failed, expected %d got %d\n", __func__, offset, roffset);
+      return false;
+   }
+
+   len = dev->d_read(-1, buf, size);
+   if (len != size) {
+      Dmsg3(100, "%s: d_read failed, expected %d got %d\n", __func__, size, len);
+      return false;
+   }
+
+   rcksum = bcrc32((uint8_t *)buf, size);
+   if (rcksum != cksum) {
+      Dmsg3(100, "%s: cksum mismatch expected 0x%x got 0x%x\n", __func__, cksum, rcksum);
+      return false;
+   }
+
+   return true;
+}
+
+/*                                    datasz             offset             cksum */
+static const size_t minbufsz = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint32_t);
+
+ssize_t DCR::serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t datasz, uint64_t offset, uint32_t cksum)
+{
+   ser_declare;
+
+   Dmsg6(100, "%s: buf %p bufsz %d datasz %d offset %lld cksum 0x%x\n", __func__, buf, bufsz, datasz, offset, cksum);
+
+   if (bufsz < minbufsz) {
+      Dmsg2(100, "datasz + offset + cksum metadata doesn't fit need %d got %d\n", minbufsz, bufsz);
+      return -1;
+   }
+
+   ser_begin(buf, n);
+   ser_uint64(datasz);
+   ser_uint64(offset);
+   ser_uint32(cksum);
+
+   return ser_length(buf);
+}
+
+bool DCR::unserialize_record_reference(POOLMEM *buf, size_t bufsz, ssize_t *rdatasz, boffset_t *roffset, uint32_t *rcksum)
+{
+   ser_declare;
+   uint64_t datasz;
+   uint64_t offset;
+   uint32_t cksum;
+
+   if (bufsz < minbufsz) {
+      Dmsg2(100, "datasz + offset + cksum metadata doesn't fit need %d got %d\n", minbufsz, bufsz);
+      return false;
+   }
+
+   unser_begin(buf, bufsz);
+   unser_uint64(datasz);
+   unser_uint64(offset);
+   unser_uint32(cksum);
+
+   *rdatasz = (ssize_t)datasz;
+   *roffset = offset;
+   *rcksum = cksum;
+
+   Dmsg6(100, "%s: buf %p bufsz %d datasz %d offset %lld cksum 0x%x\n", __func__, buf, bufsz, datasz, offset, cksum);
+
+   return true;
+}
+
 static inline ssize_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
 {
    ssize_t len;
@@ -502,6 +640,8 @@ bail_out:
 
 /*
  * Write a Record to the block
+ *
+ *  Mutates the record
  *
  *  Returns: false on failure (none or partially written)
  *           true  on success (all bytes written)
@@ -841,6 +981,28 @@ bool read_record_from_block(DCR *dcr, DEV_RECORD *rec)
       return true;
    }
    rec->remainder = 0;
+
+   if (dcr->dev->has_cap(CAP_DEDUP) && stream_is_dedupable(rec->Stream)) {
+      Dmsg1(900, "%s: process dedup stream\n", __func__);
+
+      ssize_t payload_datasz;
+      boffset_t payload_offset;
+      uint32_t payload_cksum;
+
+      if (!dcr->unserialize_record_reference(rec->data, rec->data_len, &payload_datasz, &payload_offset, &payload_cksum)) {
+         Dmsg1(100, "%s: failed to unserialize record reference\n", __func__);
+         return false;
+      }
+
+      rec->data = check_pool_memory_size(rec->data, payload_datasz);
+      rec->data_len = payload_datasz;
+
+      if (!dcr->read_record_from_payload_file(dcr, rec->data, payload_datasz, payload_offset, payload_cksum)) {
+         Dmsg4(100, "%s: failed read record from payload file: payload_datasz %d payload_offset %d payload_cksum 0x%x\n",
+            __func__, payload_datasz, payload_offset, payload_cksum);
+         return false;
+      }
+   }
 
    Dmsg4(450, "Rtn full rd_rec_blk FI=%s SessId=%d Strm=%s len=%d\n",
          FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,

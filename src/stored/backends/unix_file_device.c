@@ -188,21 +188,72 @@ bool unix_file_device::unmount_backend(DCR *dcr, int timeout)
 
 int unix_file_device::d_open(const char *pathname, int flags, int mode)
 {
-   return ::open(pathname, flags, mode);
+   int fd;
+   POOL_MEM payload_file(PM_FNAME);
+
+   if (has_cap(CAP_DEDUP)) {
+      pm_strcpy(payload_file, pathname);
+      pm_strcat(payload_file, ".payload");
+
+      m_payload_fd = ::open(payload_file.c_str(), flags, mode);
+      if (m_payload_fd < 0) {
+         berrno be;
+
+         Mmsg4(errmsg, _("d_open: pathname %s flags 0%o mode %d err %s\n"),
+               payload_file.c_str(), flags, mode, be.bstrerror());
+         return -1;
+      }
+
+      Dmsg4(100, "d_open: %s flags 0%o mode %d m_payload_fd %d\n",
+            payload_file.c_str(), flags, mode, m_payload_fd);
+   }
+
+   fd = ::open(pathname, flags, mode);
+   if (fd < 0) {
+      berrno be;
+
+      Mmsg4(errmsg, _("d_open: pathname %s flags 0%o mode %d err %s\n"),
+            pathname, flags, mode, be.bstrerror());
+      if (m_payload_fd != -1) {
+         ::close(m_payload_fd);
+         m_payload_fd = -1;
+      }
+
+      return -1;
+   }
+   Dmsg4(100, "d_open: %s flags 0%o mode %d m_payload_fd %d\n",
+         payload_file.c_str(), flags, mode, m_payload_fd);
+
+   return fd;
 }
 
 ssize_t unix_file_device::d_read(int fd, void *buffer, size_t count)
 {
+   if (has_cap(CAP_DEDUP) && fd != m_fd) {
+      return ::read(m_payload_fd, buffer, count);
+   }
+
    return ::read(fd, buffer, count);
 }
 
 ssize_t unix_file_device::d_write(int fd, const void *buffer, size_t count)
 {
+   if (has_cap(CAP_DEDUP) && fd != m_fd) {
+      return ::write(m_payload_fd, buffer, count);
+   }
+
    return ::write(fd, buffer, count);
 }
 
 int unix_file_device::d_close(int fd)
 {
+   if (has_cap(CAP_DEDUP)) {
+      if (m_payload_fd != -1) {
+         ::close(m_payload_fd);
+         m_payload_fd = -1;
+      }
+   }
+
    return ::close(fd);
 }
 
@@ -211,9 +262,18 @@ int unix_file_device::d_ioctl(int fd, ioctl_req_t request, char *op)
    return -1;
 }
 
+boffset_t unix_file_device::d_lseek(int fd, DCR *dcr, boffset_t offset, int whence)
+{
+   if (has_cap(CAP_DEDUP) && fd != m_fd) {
+      return ::lseek(m_payload_fd, offset, whence);
+   } else {
+      return ::lseek(m_fd, offset, whence);
+   }
+}
+
 boffset_t unix_file_device::d_lseek(DCR *dcr, boffset_t offset, int whence)
 {
-   return ::lseek(m_fd, offset, whence);
+   return d_lseek(m_fd, dcr, offset, whence);
 }
 
 bool unix_file_device::d_truncate(DCR *dcr)
@@ -306,4 +366,5 @@ unix_file_device::~unix_file_device()
 
 unix_file_device::unix_file_device()
 {
+   m_payload_fd = -1;
 }

@@ -163,13 +163,14 @@ enum {
    CAP_BLOCKCHECKSUM = 23,            /* Create/test block checksum */
    CAP_IOERRATEOM = 24,               /* IOError at EOM */
    CAP_IBMLINTAPE = 25,               /* Using IBM lin_tape driver */
-   CAP_ADJWRITESIZE = 26              /* Adjust write size to min/max */
+   CAP_ADJWRITESIZE = 26,             /* Adjust write size to min/max */
+   CAP_DEDUP = 27                     /* This device supports deduplication */
 };
 
 /*
  * Keep this set to the last entry in the enum.
  */
-#define CAP_MAX CAP_ADJWRITESIZE
+#define CAP_MAX CAP_DEDUP
 
 /*
  * Make sure you have enough bits to store all above bit fields.
@@ -514,6 +515,7 @@ public:
    virtual int d_close(int fd) = 0;
    virtual ssize_t d_read(int fd, void *buffer, size_t count) = 0;
    virtual ssize_t d_write(int fd, const void *buffer, size_t count) = 0;
+   virtual boffset_t DEVICE::d_lseek(int fd, DCR *dcr, boffset_t offset, int whence) { errno = EIO; return -1; }
    virtual boffset_t d_lseek(DCR *dcr, boffset_t offset, int whence) = 0;
    virtual bool d_truncate(DCR *dcr) = 0;
 
@@ -700,6 +702,12 @@ public:
     * Methods in record.c
     */
    bool write_record();
+
+   bool write_record_to_payload_file(DCR *dcr, uint64_t *roffset, uint32_t *rcksum);
+   bool read_record_from_payload_file(DCR *dcr, POOLMEM *buf, ssize_t sz, boffset_t offset, uint32_t cksum);
+
+   ssize_t serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t datasz, uint64_t offset, uint32_t cksum);
+   bool unserialize_record_reference(POOLMEM *buf, size_t bufsz, ssize_t *rdatasz, boffset_t *roffset, uint32_t *rcksum);
 
    /*
     * Methods in reserve.c
