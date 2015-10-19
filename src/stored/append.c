@@ -44,6 +44,25 @@ void possible_incomplete_job(JCR *jcr, int32_t last_file_index)
 }
 
 /*
+ * These are data streams that are considered for Dedup.
+ */
+static bool stream_is_dedupable(int32_t Stream)
+{
+   switch (dcr->rec->Stream) {
+   case STREAM_FILE_DATA:
+   case STREAM_SPARSE_DATA:
+   case STREAM_WIN32_DATA:
+   case STREAM_MACOS_FORK_DATA:
+   case STREAM_COMPRESSED_DATA:
+   case STREAM_SPARSE_COMPRESSED_DATA:
+   case STREAM_WIN32_COMPRESSED_DATA:
+      return true;
+   }
+
+   return false;
+}
+
+/*
  * Append Data sent from File daemon
  */
 bool do_append_data(JCR *jcr, BSOCK *bs, const char *what)
@@ -229,41 +248,26 @@ fi_checked:
                stream_to_ascii(buf1, dcr->rec->Stream,
                dcr->rec->FileIndex), dcr->rec->data_len);
 
-         if (dcr->dev->has_cap(CAP_DEDUP)) {
+         if (dcr->dev->has_cap(CAP_DEDUP) && stream_is_dedupable(dcr->rec->Stream)) {
             ssize_t len;
 
-            switch (dcr->rec->Stream) {
-            case STREAM_FILE_DATA:
-            case STREAM_SPARSE_DATA:
-            case STREAM_WIN32_DATA:
-            case STREAM_MACOS_FORK_DATA:
-            case STREAM_COMPRESSED_DATA:
-            case STREAM_SPARSE_COMPRESSED_DATA:
-            case STREAM_WIN32_COMPRESSED_DATA:
-               /*
-                * These are data streams that are considered for Dedup.
-                */
-               if (!dcr->write_record_to_payload_file(dcr, dcr->rec, &payload_offset, &payload_cksum)) {
-                  Dmsg2(90, "Got write_record_to_payload_file error on device %s. %s\n",
-                        dcr->dev->print_name(), dcr->dev->bstrerror());
-                  break;
-               }
-
-               len = dcr->serialize_record_reference(payload_data,
-                                                     sizeof_pool_memory(payload_data),
-                                                     payload_offset, payload_cksum);
-               if (len < 0) {
-                  Dmsg1(90, "Got serialize_record_reference error on device %s\n",
-                        dcr->dev->print_name());
-                  break;
-               }
-
-               dcr->rec->data = payload_data;
-               dcr->rec->data_len = len;
-               break;
-            default:
+            if (!dcr->write_record_to_payload_file(dcr, dcr->rec, &payload_offset, &payload_cksum)) {
+               Dmsg2(90, "Got write_record_to_payload_file error on device %s. %s\n",
+                     dcr->dev->print_name(), dcr->dev->bstrerror());
                break;
             }
+
+            len = dcr->serialize_record_reference(payload_data,
+                                                  sizeof_pool_memory(payload_data),
+                                                  payload_offset, payload_cksum);
+            if (len < 0) {
+               Dmsg1(90, "Got serialize_record_reference error on device %s\n",
+                     dcr->dev->print_name());
+               break;
+            }
+
+            dcr->rec->data = payload_data;
+            dcr->rec->data_len = len;
          }
 
          ok = dcr->write_record();
