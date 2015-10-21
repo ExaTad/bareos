@@ -33,6 +33,12 @@
  */
 bool stream_is_dedupable(int32_t stream)
 {
+   if (stream < 0) {
+      stream = -stream;
+   }
+
+   stream &= STREAMMASK_TYPE;
+
    switch (stream) {
    case STREAM_FILE_DATA:
    case STREAM_SPARSE_DATA:
@@ -410,6 +416,8 @@ bool DCR::read_record_from_payload_file(DCR *dcr, POOLMEM *buf, ssize_t sz, boff
    ssize_t r;
    boffset_t o;
    uint32_t c;
+
+   Dmsg5(100, "%s: dcr %p buf %p sz %d offset %d cksum 0x%x\n", dcr, buf, sz, offset, cksum);
 
    o = dev->d_lseek(dev->DH_DATADATA, dcr, offset, SEEK_SET);
    if (o != offset) {
@@ -922,7 +930,9 @@ bool read_record_from_block(DCR *dcr, DEV_RECORD *rec)
    }
    rec->remainder = 0;
 
-   if (dcr->dev->has_cap(CAP_DEDUP) && stream_is_dedupable(dcr->rec->Stream)) {
+   if (dcr->dev->has_cap(CAP_DEDUP) && stream_is_dedupable(rec->Stream)) {
+      Dmsg1(900, "%s: process dedup stream\n", __func__);
+
       ssize_t payload_datasz;
       boffset_t payload_offset; 
       uint32_t payload_cksum;
