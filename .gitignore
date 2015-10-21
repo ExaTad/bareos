@@ -88,6 +88,9 @@ debian/bareos-director.preinst
 debian/bareos-director.service
 debian/bareos-director.substvars
 debian/bareos-director/
+debian/bareos-filedaemon-glusterfs-plugin.install
+debian/bareos-storage-glusterfs.install
+debian/bareos-storage-glusterfs.postinst
 debian/bareos-filedaemon-ldap-python-plugin.install
 debian/bareos-filedaemon-ldap-python-plugin.substvars
 debian/bareos-filedaemon-ldap-python-plugin/
