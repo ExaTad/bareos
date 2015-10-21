@@ -36,6 +36,7 @@ void setup_new_dcr_device(JCR *jcr, DCR *dcr, DEVICE *dev, BLOCKSIZES *blocksize
 void free_dcr(DCR *dcr);
 
 /* append.c */
+bool stream_is_dedupable(int32_t stream);
 bool do_append_data(JCR *jcr, BSOCK *bs, const char *what);
 bool send_attrs_to_dir(JCR *jcr, DEV_RECORD *rec);
 

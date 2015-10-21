@@ -46,7 +46,7 @@ void possible_incomplete_job(JCR *jcr, int32_t last_file_index)
 /*
  * These are data streams that are considered for Dedup.
  */
-static bool stream_is_dedupable(int32_t stream)
+bool stream_is_dedupable(int32_t stream)
 {
    switch (stream) {
    case STREAM_FILE_DATA:
@@ -259,6 +259,7 @@ fi_checked:
 
             len = dcr->serialize_record_reference(payload_data,
                                                   sizeof_pool_memory(payload_data),
+                                                  dcr->rec->data_len,
                                                   payload_offset, payload_cksum);
             if (len < 0) {
                Dmsg1(90, "Got serialize_record_reference error on device %s\n",

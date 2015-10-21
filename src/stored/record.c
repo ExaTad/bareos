@@ -386,12 +386,43 @@ bool DCR::write_record_to_payload_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roff
    return true;
 }
 
-ssize_t DCR::serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t offset, uint32_t cksum)
+bool DCR::read_record_from_payload_file(DCR *dcr, POOLMEM *buf, ssize_t sz, boffset_t offset, uint32_t cksum)
 {
-   Dmsg5(100, "%s: buf %p bufsz %d offset %lld cksum 0x%x\n", __func__, buf, bufsz, offset, cksum);
+   ssize_t r;
+   boffset_t o;
+   uint32_t c;
 
-   if (bufsz < (sizeof(offset) + sizeof(cksum))) {
-      Dmsg2(100, "offset + cksum metadata doesn't fit need %d got %d\n", sizeof(offset)+sizeof(cksum), bufsz);
+   o = dev->d_lseek(dev->DH_DATADATA, dcr, offset, SEEK_SET);
+   if (o != offset) {
+      Dmsg3(100, "%s: d_lseek failed, expected %d got %d\n", __func__, offset, o);
+      return false;
+   }
+
+   r = dev->d_read(dev->DH_DATADATA, buf, sz);
+   if (r != sz) {
+      Dmsg3(100, "%s: d_read failed, expected %d got %d\n", __func__, sz, r);
+      return false;
+   }
+
+   c = bcrc32((uint8_t*)buf, sz);
+   if (c != cksum) {
+      Dmsg3(100, "%s: cksum mismatch expected 0x%x got 0x%x\n", __func__, cksum, c);
+      return false;
+   }
+
+   return true;
+}
+
+/*                                    datasz             offset             cksum */
+static const size_t minbufsz = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint32_t);
+
+ssize_t DCR::serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t datasz, uint64_t offset, uint32_t cksum)
+{
+
+   Dmsg6(100, "%s: buf %p bufsz %d datasz %d offset %lld cksum 0x%x\n", __func__, buf, bufsz, datasz, offset, cksum);
+
+   if (bufsz < minbufsz) {
+      Dmsg2(100, "datasz + offset + cksum metadata doesn't fit need %d got %d\n", minbufsz, bufsz);
       return -1;
    }
 
@@ -399,10 +430,39 @@ ssize_t DCR::serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t off
 
    ser_begin(buf, n);
 
+   ser_uint64(datasz);
    ser_uint64(offset);
    ser_uint32(cksum);
 
    return ser_length(buf);
+}
+
+bool DCR::unserialize_record_reference(POOLMEM *buf, size_t bufsz, ssize_t *rdatasz, boffset_t *roffset, uint32_t *rcksum)
+{
+   uint64_t datasz;
+   uint64_t offset;
+   uint32_t cksum;
+
+   if (bufsz < minbufsz) {
+      Dmsg2(100, "datasz + offset + cksum metadata doesn't fit need %d got %d\n", minbufsz, bufsz);
+      return false;
+   }
+
+   ser_declare;
+
+   unser_begin(buf, bufsz);
+
+   unser_uint64(datasz);
+   unser_uint64(offset);
+   unser_uint32(cksum);
+
+   *rdatasz = (ssize_t)datasz;
+   *roffset = offset;
+   *rcksum = cksum;
+
+   Dmsg6(100, "%s: buf %p bufsz %d datasz %d offset %lld cksum 0x%x\n", __func__, buf, bufsz, datasz, offset, cksum);
+
+   return true;
 }
 
 static inline ssize_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
@@ -842,6 +902,26 @@ bool read_record_from_block(DCR *dcr, DEV_RECORD *rec)
       return true;
    }
    rec->remainder = 0;
+
+   if (dcr->dev->has_cap(CAP_DEDUP) && stream_is_dedupable(dcr->rec->Stream)) {
+      ssize_t payload_datasz;
+      boffset_t payload_offset; 
+      uint32_t payload_cksum;
+
+      if (!dcr->unserialize_record_reference(rec->data, rec->data_len, &payload_datasz, &payload_offset, &payload_cksum)) {
+         Dmsg1(100, "%s: failed to unserialize record reference\n", __func__);
+         return false;
+      }
+
+      rec->data = check_pool_memory_size(rec->data, payload_datasz);
+      rec->data_len = payload_datasz;
+
+      if (!dcr->read_record_from_payload_file(dcr, rec->data, payload_datasz, payload_offset, payload_cksum)) {
+         Dmsg4(100, "%s: failed read record from payload file: payload_datasz %d payload_offset %d payload_cksum 0x%x\n",
+            __func__, payload_datasz, payload_offset, payload_cksum);
+         return false;
+      }
+   }
 
    Dmsg4(450, "Rtn full rd_rec_blk FI=%s SessId=%d Strm=%s len=%d\n",
          FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,

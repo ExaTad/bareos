@@ -710,8 +710,12 @@ public:
     * Methods in record.c
     */
    bool write_record();
+
    bool write_record_to_payload_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roffset, uint32_t *rcksum);
-   ssize_t serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t offset, uint32_t cksum);
+   bool read_record_from_payload_file(DCR *dcr, POOLMEM *buf, ssize_t sz, boffset_t offset, uint32_t cksum);
+
+   ssize_t serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t datasz, uint64_t offset, uint32_t cksum);
+   bool unserialize_record_reference(POOLMEM *buf, size_t bufsz, ssize_t *rdatasz, boffset_t *roffset, uint32_t *rcksum);
 
    /*
     * Methods in reserve.c
