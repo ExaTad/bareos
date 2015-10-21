@@ -36,7 +36,6 @@ void setup_new_dcr_device(JCR *jcr, DCR *dcr, DEVICE *dev, BLOCKSIZES *blocksize
 void free_dcr(DCR *dcr);
 
 /* append.c */
-bool stream_is_dedupable(int32_t stream);
 bool do_append_data(JCR *jcr, BSOCK *bs, const char *what);
 bool send_attrs_to_dir(JCR *jcr, DEV_RECORD *rec);
 
@@ -189,6 +188,7 @@ bool read_records(DCR *dcr,
                   bool mount_cb(DCR *dcr));
 
 /* record.c */
+bool stream_is_dedupable(int32_t stream);
 const char *FI_to_ascii(char *buf, int fi);
 const char *stream_to_ascii(char *buf, int stream, int fi);
 bool write_record_to_block(DCR *dcr, DEV_RECORD *rec);

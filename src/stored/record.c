@@ -29,6 +29,25 @@
 #include "stored.h"
 
 /*
+ * These are data streams that are considered for deduplication.
+ */
+bool stream_is_dedupable(int32_t stream)
+{
+   switch (stream) {
+   case STREAM_FILE_DATA:
+   case STREAM_SPARSE_DATA:
+   case STREAM_WIN32_DATA:
+   case STREAM_MACOS_FORK_DATA:
+   case STREAM_COMPRESSED_DATA:
+   case STREAM_SPARSE_COMPRESSED_DATA:
+   case STREAM_WIN32_COMPRESSED_DATA:
+      return true;
+   }
+
+   return false;
+}
+
+/*
  * Convert a FileIndex into a printable
  *   ASCII string.  Not reentrant.
  * If the FileIndex is negative, it flags the
