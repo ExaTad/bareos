@@ -55,10 +55,11 @@ bool stream_is_dedupable(int32_t stream)
 
 /*
  * Convert a FileIndex into a printable
- *   ASCII string.  Not reentrant.
+ * ASCII string.  Not reentrant.
+ *
  * If the FileIndex is negative, it flags the
- *   record as a Label, otherwise it is simply
- *   the FileIndex of the current file.
+ * record as a Label, otherwise it is simply
+ * the FileIndex of the current file.
  */
 const char *FI_to_ascii(char *buf, int fi)
 {
@@ -94,14 +95,15 @@ const char *FI_to_ascii(char *buf, int fi)
 
 /*
  * Convert a Stream ID into a printable
- * ASCII string.  Not reentrant.
-
+ * ASCII string. Not reentrant.
+ *
  * A negative stream number represents
- *   stream data that is continued from a
- *   record in the previous block.
+ * stream data that is continued from a
+ * record in the previous block.
+ *
  * If the FileIndex is negative, we are
- *   dealing with a Label, hence the
- *   stream is the JobId.
+ * dealing with a Label, hence the
+ * stream is the JobId.
  */
 const char *stream_to_ascii(char *buf, int stream, int fi)
 {
@@ -110,10 +112,13 @@ const char *stream_to_ascii(char *buf, int stream, int fi)
       sprintf(buf, "%d", stream);
       return buf;
    }
+
    if (stream < 0) {
       stream = -stream;
       stream &= STREAMMASK_TYPE;
-      /* Stream was negative => all are continuation items */
+      /*
+       * Stream was negative => all are continuation items
+       */
       switch (stream) {
       case STREAM_UNIX_ATTRIBUTES:
          return "contUATTR";
@@ -248,15 +253,66 @@ const char *stream_to_ascii(char *buf, int stream, int fi)
    }
 }
 
-const char *record_state_to_ascii(rec_state state)
+static const char *record_state_to_ascii(rec_state state)
 {
    switch(state) {
-   default:             return "<unknown>";
-   case st_none:        return "st_none";
-   case st_header:      return "st_header";
-   case st_header_cont: return "st_header_cont";
-   case st_data:        return "st_data";
+   case st_none:
+      return "st_none";
+   case st_header:
+      return "st_header";
+   case st_header_cont:
+      return "st_header_cont";
+   case st_data:
+      return "st_data";
+   default:
+      return "<unknown>";
    }
+}
+
+static const char *findex_to_str(int32_t index, char *buf, size_t bufsz)
+{
+   if (index >= 0) {
+      bsnprintf(buf, bufsz, "<User> %d", index);
+      return buf;
+   }
+
+   FI_to_ascii(buf, index);
+
+   return buf;
+}
+
+void dump_record(const char *tag, const DEV_RECORD *rec)
+{
+   char stream[128];
+   char findex[128];
+
+   Dmsg2(100, "%s: rec %p\n", tag, rec);
+
+   Dmsg3(100, "%-14s next %p prev %p\n", "link", rec->link.next, rec->link.prev);
+   Dmsg2(100, "%-14s %u\n", "File", rec->File);
+   Dmsg2(100, "%-14s %u\n", "Block", rec->Block);
+   Dmsg2(100, "%-14s %u\n", "VolSessionId", rec->VolSessionId);
+   Dmsg2(100, "%-14s %u\n", "VolSessionTime", rec->VolSessionTime);
+   Dmsg2(100, "%-14s %s\n", "FileIndex", findex_to_str(rec->FileIndex, findex, sizeof(findex)));
+   Dmsg2(100, "%-14s %s\n", "Stream", stream_to_ascii(stream, rec->Stream, rec->FileIndex));
+   Dmsg2(100, "%-14s %d\n", "maskedStream", rec->maskedStream);
+   Dmsg2(100, "%-14s %u\n", "data_len", rec->data_len);
+   Dmsg2(100, "%-14s %u\n", "remainder", rec->remainder);
+   for (unsigned int i = 0; i < (sizeof(rec->state_bits) / sizeof(rec->state_bits[0])); i++) {
+      Dmsg3(100, "%-11s[%d]        %2.2x\n", "state_bits", i, (uint8_t)rec->state_bits[i]);
+   }
+   Dmsg3(100, "%-14s %u (%s)\n", "state", rec->state, record_state_to_ascii(rec->state));
+   Dmsg2(100, "%-14s %p\n", "bsr", rec->bsr);
+   for (unsigned int i = 0; i < (sizeof(rec->ser_buf) / sizeof(rec->ser_buf[0])); i++) {
+      Dmsg3(100, "%-11s[%d] %2.2x\n", "ser_buf", i, (uint8_t)rec->ser_buf[i]);
+   }
+   Dmsg2(100, "%-14s %p\n", "data", rec->data);
+   Dmsg2(100, "%-14s %d\n", "match_stat", rec->match_stat);
+   Dmsg2(100, "%-14s %u\n", "last_VolSessionId", rec->last_VolSessionId);
+   Dmsg2(100, "%-14s %u\n", "last_VolSessionTime", rec->last_VolSessionTime);
+   Dmsg2(100, "%-14s %d\n", "last_FileIndex", rec->last_FileIndex);
+   Dmsg2(100, "%-14s %d\n", "last_Stream", rec->last_Stream);
+   Dmsg2(100, "%-14s %s\n", "own_mempool", rec->own_mempool ? "true" : "false");
 }
 
 /*
@@ -373,33 +429,30 @@ static inline ssize_t write_header_to_block(DEV_BLOCK *block, const DEV_RECORD *
 }
 
 /*
- * Writes rec->data into the dev->DH_DATADATA file,
+ * Writes rec->data into the dev->DH_PAYLOAD file,
  * If successful (returns true), the offset
  * the data begins at and the checksum of the data
  * are given to the caller in roffset and rcksum, respectively
  */
-bool DCR::write_record_to_payload_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roffset, uint32_t *rcksum)
+bool DCR::write_record_to_payload_file(DCR *dcr, uint64_t *roffset, uint32_t *rcksum)
 {
    Dmsg5(100, "%s: dcr %p rec %p rec->data %p rec->data_len %d\n", __func__, dcr, rec, rec->data, rec->data_len);
 
-   ssize_t r;
-   DEVICE *dev;
+   ssize_t len;
    boffset_t offset;
    uint32_t cksum;
 
-   dev = dcr->dev;
-
-   offset = dev->d_lseek(dev->DH_DATADATA, dcr, 0, SEEK_CUR);
+   offset = dev->d_lseek(dev->DH_PAYLOAD, dcr, 0, SEEK_CUR);
    if (offset < 0) {
       return false;
    }
 
-   r = dev->d_write(dev->DH_DATADATA, rec->data, rec->data_len);
-   if (r < 0) {
+   len = dev->d_write(dev->DH_PAYLOAD, rec->data, rec->data_len);
+   if (len < 0) {
       return false;
    }
-   if (r != rec->data_len) {
-      Dmsg3(0, "%s: short write. got %d expected %d\n", __func__, r, rec->data_len);
+   if (len != rec->data_len) {
+      Dmsg3(0, "%s: short write. got %d expected %d\n", __func__, len, rec->data_len);
       return false;
    }
 
@@ -411,29 +464,29 @@ bool DCR::write_record_to_payload_file(DCR *dcr, DEV_RECORD *rec, uint64_t *roff
    return true;
 }
 
-bool DCR::read_record_from_payload_file(DCR *dcr, POOLMEM *buf, ssize_t sz, boffset_t offset, uint32_t cksum)
+bool DCR::read_record_from_payload_file(DCR *dcr, POOLMEM *buf, ssize_t size, boffset_t offset, uint32_t cksum)
 {
-   ssize_t r;
-   boffset_t o;
-   uint32_t c;
+   ssize_t len;
+   boffset_t roffset;
+   uint32_t rcksum;
 
-   Dmsg5(100, "%s: dcr %p buf %p sz %d offset %d cksum 0x%x\n", dcr, buf, sz, offset, cksum);
+   Dmsg5(100, "%s: dcr %p buf %p size %d offset %d cksum 0x%x\n", dcr, buf, size, offset, cksum);
 
-   o = dev->d_lseek(dev->DH_DATADATA, dcr, offset, SEEK_SET);
-   if (o != offset) {
-      Dmsg3(100, "%s: d_lseek failed, expected %d got %d\n", __func__, offset, o);
+   roffset = dev->d_lseek(dev->DH_PAYLOAD, dcr, offset, SEEK_SET);
+   if (roffset != offset) {
+      Dmsg3(100, "%s: d_lseek failed, expected %d got %d\n", __func__, offset, roffset);
       return false;
    }
 
-   r = dev->d_read(dev->DH_DATADATA, buf, sz);
-   if (r != sz) {
-      Dmsg3(100, "%s: d_read failed, expected %d got %d\n", __func__, sz, r);
+   len = dev->d_read(dev->DH_PAYLOAD, buf, size);
+   if (len != size) {
+      Dmsg3(100, "%s: d_read failed, expected %d got %d\n", __func__, size, len);
       return false;
    }
 
-   c = bcrc32((uint8_t*)buf, sz);
-   if (c != cksum) {
-      Dmsg3(100, "%s: cksum mismatch expected 0x%x got 0x%x\n", __func__, cksum, c);
+   rcksum = bcrc32((uint8_t *)buf, size);
+   if (rcksum != cksum) {
+      Dmsg3(100, "%s: cksum mismatch expected 0x%x got 0x%x\n", __func__, cksum, rcksum);
       return false;
    }
 
@@ -445,6 +498,7 @@ static const size_t minbufsz = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint
 
 ssize_t DCR::serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t datasz, uint64_t offset, uint32_t cksum)
 {
+   ser_declare;
 
    Dmsg6(100, "%s: buf %p bufsz %d datasz %d offset %lld cksum 0x%x\n", __func__, buf, bufsz, datasz, offset, cksum);
 
@@ -453,10 +507,7 @@ ssize_t DCR::serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t dat
       return -1;
    }
 
-   ser_declare;
-
    ser_begin(buf, n);
-
    ser_uint64(datasz);
    ser_uint64(offset);
    ser_uint32(cksum);
@@ -466,6 +517,7 @@ ssize_t DCR::serialize_record_reference(POOLMEM *buf, size_t bufsz, uint64_t dat
 
 bool DCR::unserialize_record_reference(POOLMEM *buf, size_t bufsz, ssize_t *rdatasz, boffset_t *roffset, uint32_t *rcksum)
 {
+   ser_declare;
    uint64_t datasz;
    uint64_t offset;
    uint32_t cksum;
@@ -475,10 +527,7 @@ bool DCR::unserialize_record_reference(POOLMEM *buf, size_t bufsz, ssize_t *rdat
       return false;
    }
 
-   ser_declare;
-
    unser_begin(buf, bufsz);
-
    unser_uint64(datasz);
    unser_uint64(offset);
    unser_uint32(cksum);
@@ -494,15 +543,15 @@ bool DCR::unserialize_record_reference(POOLMEM *buf, size_t bufsz, ssize_t *rdat
 
 static inline ssize_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *rec)
 {
-   ssize_t n;
+   ssize_t len;
 
-   n = block_write_navail(block);
-   if (n > rec->remainder)
-      n = rec->remainder;
+   len = block_write_navail(block);
+   if (len > rec->remainder)
+      len = rec->remainder;
 
-   memcpy(block->bufp, rec->data + (rec->data_len - rec->remainder), n);
-   block->bufp += n;
-   block->binbuf += n;
+   memcpy(block->bufp, rec->data + (rec->data_len - rec->remainder), len);
+   block->bufp += len;
+   block->binbuf += len;
 
 #ifdef xxxxxSMCHECK
    if (!sm_check_rtn(__FILE__, __LINE__, False)) {
@@ -515,15 +564,14 @@ static inline ssize_t write_data_to_block(DEV_BLOCK *block, const DEV_RECORD *re
          stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
          n, block_write_navail(block), rec->remainder);
       Dmsg5(0, "Damaged block: bufp=%x binbuf=%d buf_len=%d rem=%d moved=%d\n",
-         block->bufp, block->binbuf, block->buf_len, block_write_navail(block),
-         n);
+         block->bufp, block->binbuf, block->buf_len, block_write_navail(block), len);
       Dmsg2(0, "Damaged block: buf=%x binbuffrombuf=%d \n",
          block->buf, block->bufp-block->buf);
       Emsg0(M_ABORT, 0, _("Damaged buffer\n"));
    }
 #endif
 
-   return n;
+   return len;
 }
 
 /*
@@ -608,7 +656,7 @@ bail_out:
  */
 bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
 {
-   ssize_t n;
+   ssize_t len;
    bool retval = false;
    char buf1[100], buf2[100];
    DEV_BLOCK *block = dcr->block;
@@ -620,7 +668,7 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
       Dmsg9(890, "%s() state=%d (%s) FI=%s SessId=%d Strm=%s len=%d "
             "block_navail=%d remainder=%d\n",
             __func__, rec->state, record_state_to_ascii(rec->state),
-	    FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
+            FI_to_ascii(buf1, rec->FileIndex), rec->VolSessionId,
             stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len,
             block_write_navail(block), rec->remainder);
 
@@ -634,50 +682,50 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
          continue;                         /* goto st_header */
 
       case st_header:
-	 /*
+         /*
           * Write header
           */
-	 n = write_header_to_block(block, rec, rec->Stream);
-	 if (n < 0) {
-	    /*
-	     * the header did not fit into the block, so flush the current
-	     * block and come back to st_header and try again on the next block.
-	     */
-	    goto bail_out;
-	 }
+         len = write_header_to_block(block, rec, rec->Stream);
+         if (len < 0) {
+            /*
+             * the header did not fit into the block, so flush the current
+             * block and come back to st_header and try again on the next block.
+             */
+            goto bail_out;
+         }
 
-	 if (block_write_navail(block) == 0) {
-	    /*
-	     * The header fit, but no bytes of data will fit,
-	     * so flush this block and start the next block with a
-	     * continuation header.
-	     */
-	    rec->state = st_header_cont;
-	    goto bail_out;
-	 }
+         if (block_write_navail(block) == 0) {
+            /*
+             * The header fit, but no bytes of data will fit,
+             * so flush this block and start the next block with a
+             * continuation header.
+             */
+            rec->state = st_header_cont;
+            goto bail_out;
+         }
 
-	 /*
-	  * The header fit, and at least one byte of data will fit,
-	  * so move to the st_data state and start filling the block
-	  * with data bytes
-	  */
-	 rec->state = st_data;
-	 continue;
+         /*
+          * The header fit, and at least one byte of data will fit,
+          * so move to the st_data state and start filling the block
+          * with data bytes
+          */
+         rec->state = st_data;
+         continue;
 
       case st_header_cont:
-	 /*
-	  * Write continuation header
-	  */
-	 n = write_header_to_block(block, rec, -rec->Stream);
-         if (n < 0) {
+         /*
+          * Write continuation header
+          */
+         len = write_header_to_block(block, rec, -rec->Stream);
+         if (len < 0) {
             /*
              * The continuation header wouldn't fit, which is impossible
              * unless something is broken
              */
-	    Emsg0(M_ABORT, 0, _("couldn't write continuation header\n"));
+            Emsg0(M_ABORT, 0, _("couldn't write continuation header\n"));
          }
 
-	 /*
+         /*
           * After successfully writing a continuation header, we always start writing
           * data, even if none will fit into this block.
           */
@@ -695,24 +743,23 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
          continue;
 
       case st_data:
-	 /*
-	  * Write normal data
-	  *
+         /*
+          * Write normal data
+          *
           * Part of it may have already been transferred, and we
           * may not have enough room to transfer the whole this time.
           */
          if (rec->remainder > 0) {
-            n = write_data_to_block(block, rec);
-            if (n < 0) {
+            len = write_data_to_block(block, rec);
+            if (len < 0) {
                /*
                 * error appending data to block should be impossible
                 * unless something is broken
                 */
-	       Emsg0(M_ABORT, 0, _("data write error\n"));
+               Emsg0(M_ABORT, 0, _("data write error\n"));
             }
 
-            rec->remainder -= n;
-
+            rec->remainder -= len;
             if (rec->remainder > 0) {
                /*
                 * Could not fit all of the data bytes into this block, so
@@ -730,7 +777,7 @@ bool write_record_to_block(DCR *dcr, DEV_RECORD *rec)
          goto bail_out;
 
       default:
-	 Emsg1(M_ABORT, 0, _("Something went wrong. Unknown state %d.\n"), rec->state);
+         Emsg1(M_ABORT, 0, _("Something went wrong. Unknown state %d.\n"), rec->state);
          rec->state = st_none;
          retval = true;
          goto bail_out;
@@ -934,7 +981,7 @@ bool read_record_from_block(DCR *dcr, DEV_RECORD *rec)
       Dmsg1(900, "%s: process dedup stream\n", __func__);
 
       ssize_t payload_datasz;
-      boffset_t payload_offset; 
+      boffset_t payload_offset;
       uint32_t payload_cksum;
 
       if (!dcr->unserialize_record_reference(rec->data, rec->data_len, &payload_datasz, &payload_offset, &payload_cksum)) {
@@ -957,109 +1004,4 @@ bool read_record_from_block(DCR *dcr, DEV_RECORD *rec)
          stream_to_ascii(buf2, rec->Stream, rec->FileIndex), rec->data_len);
 
    return true;                       /* transferred full record */
-}
-
-
-const char* stream_to_str(int32_t stream, char *buf, int bufsz)
-{
-   const char *s;
-
-   switch(stream) {
-   default:
-      snprintf(buf, bufsz, "<Unknown> %d", stream);
-      return buf;
-   case STREAM_NONE:                      s="NONE";                      break;
-   case STREAM_UNIX_ATTRIBUTES:           s="UNIX_ATTRIBUTES";           break;
-   case STREAM_FILE_DATA:                 s="FILE_DATA";                 break;
-// case STREAM_MD5_SIGNATURE:             s="MD5_SIGNATURE";             break;
-   case STREAM_MD5_DIGEST:                s="MD5_DIGEST";                break;
-   case STREAM_GZIP_DATA:                 s="GZIP_DATA";                 break;
-   case STREAM_UNIX_ATTRIBUTES_EX:        s="UNIX_ATTRIBUTES_EX";        break;
-   case STREAM_SPARSE_DATA:               s="SPARSE_DATA";               break;
-   case STREAM_SPARSE_GZIP_DATA:          s="SPARSE_GZIP_DATA";          break;
-   case STREAM_PROGRAM_NAMES:             s="PROGRAM_NAMES";             break;
-   case STREAM_PROGRAM_DATA:              s="PROGRAM_DATA";              break;
-// case STREAM_SHA1_SIGNATURE:            s="SHA1_SIGNATURE";            break;
-   case STREAM_SHA1_DIGEST:               s="SHA1_DIGEST";               break;
-   case STREAM_WIN32_DATA:                s="WIN32_DATA";                break;
-   case STREAM_WIN32_GZIP_DATA:           s="WIN32_GZIP_DATA";           break;
-   case STREAM_MACOS_FORK_DATA:           s="MACOS_FORK_DATA";           break;
-   case STREAM_HFSPLUS_ATTRIBUTES:        s="HFSPLUS_ATTRIBUTES";        break;
-   case STREAM_UNIX_ACCESS_ACL:           s="UNIX_ACCESS_ACL";           break;
-   case STREAM_UNIX_DEFAULT_ACL:          s="UNIX_DEFAULT_ACL";          break;
-   case STREAM_SHA256_DIGEST:             s="SHA256_DIGEST";             break;
-   case STREAM_SHA512_DIGEST:             s="SHA512_DIGEST";             break;
-   case STREAM_SIGNED_DIGEST:             s="SIGNED_DIGEST";             break;
-   case STREAM_ENCRYPTED_FILE_DATA:       s="ENCRYPTED_FILE_DATA";       break;
-   case STREAM_ENCRYPTED_WIN32_DATA:      s="ENCRYPTED_WIN32_DATA";      break;
-   case STREAM_ENCRYPTED_SESSION_DATA:    s="ENCRYPTED_SESSION_DATA";    break;
-   case STREAM_ENCRYPTED_FILE_GZIP_DATA:  s="ENCRYPTED_FILE_GZIP_DATA";  break;
-   case STREAM_ENCRYPTED_WIN32_GZIP_DATA: s="ENCRYPTED_WIN32_GZIP_DATA"; break;
-   case STREAM_ENCRYPTED_MACOS_FORK_DATA: s="ENCRYPTED_MACOS_FORK_DATA"; break;
-   case STREAM_PLUGIN_NAME:               s="PLUGIN_NAME";               break;
-   case STREAM_PLUGIN_DATA:               s="PLUGIN_DATA";               break;
-   case STREAM_RESTORE_OBJECT:            s="RESTORE_OBJECT";            break;
-   }
-
-   snprintf(buf, bufsz, "STREAM_%s", s);
-
-   return buf;
-}
-
-const char* findex_to_str(int32_t index, char *buf, size_t bufsz)
-{
-   const char *s;
-
-   if(index >= 0) {
-      snprintf(buf, bufsz, "<User> %d", index);
-      return buf;
-   }
-
-   switch(index) {
-   default:        s = "<unknown>"; break;
-   case PRE_LABEL: s = "PRE_LABEL"; break;
-   case VOL_LABEL: s = "VOL_LABEL"; break;
-   case EOM_LABEL: s = "EOM_LABEL"; break;
-   case SOS_LABEL: s = "SOS_LABEL"; break;
-   case EOS_LABEL: s = "EOS_LABEL"; break;
-   case EOT_LABEL: s = "EOT_LABEL"; break;
-   case SOB_LABEL: s = "SOB_LABEL"; break;
-   case EOB_LABEL: s = "EOB_LABEL"; break;
-   }
-
-   snprintf(buf, bufsz, "%s", s);
-
-   return buf;
-}
-
-void dump_record(const char *tag, const DEV_RECORD *rec)
-{
-   char stream[128];
-   char findex[128];
-   
-   Dmsg2(100, "%s: rec %p\n", tag, rec);
-   
-   Dmsg3(100, "%-14s	next %p prev %p\n", "link", rec->link.next, rec->link.prev);
-   Dmsg2(100, "%-14s	%u\n", "File", rec->File);
-   Dmsg2(100, "%-14s	%u\n", "Block", rec->Block);
-   Dmsg2(100, "%-14s	%u\n", "VolSessionId", rec->VolSessionId);
-   Dmsg2(100, "%-14s	%u\n", "VolSessionTime", rec->VolSessionTime);
-   Dmsg2(100, "%-14s	%s\n", "FileIndex", findex_to_str(rec->FileIndex, findex, sizeof(findex)));
-   Dmsg2(100, "%-14s	%s\n", "Stream", stream_to_str(rec->Stream, stream, sizeof(stream)));
-   Dmsg2(100, "%-14s	%d\n", "maskedStream", rec->maskedStream);
-   Dmsg2(100, "%-14s	%u\n", "data_len", rec->data_len);
-   Dmsg2(100, "%-14s	%u\n", "remainder", rec->remainder);
-      for(size_t i = 0; i < (sizeof(rec->state_bits) / sizeof(rec->state_bits[0])); i++)
-   Dmsg3(100, "%-11s[%d]	%2.2x\n", "state_bits", i, (uint8_t)rec->state_bits[i]);
-   Dmsg3(100, "%-14s	%u (%s)\n", "state", rec->state, record_state_to_ascii(rec->state));
-   Dmsg2(100, "%-14s	%p\n", "bsr", rec->bsr);
-      for(size_t i = 0; i < (sizeof(rec->ser_buf) / sizeof(rec->ser_buf[0])); i++)
-   Dmsg3(100, "%-11s[%d]	%2.2x\n", "ser_buf", i, (uint8_t)rec->ser_buf[i]);
-   Dmsg2(100, "%-14s	%p\n", "data", rec->data);
-   Dmsg2(100, "%-14s	%d\n", "match_stat", rec->match_stat);
-   Dmsg2(100, "%-14s	%u\n", "last_VolSessionId", rec->last_VolSessionId);
-   Dmsg2(100, "%-14s	%u\n", "last_VolSessionTime", rec->last_VolSessionTime);
-   Dmsg2(100, "%-14s	%d\n", "last_FileIndex", rec->last_FileIndex);
-   Dmsg2(100, "%-14s	%d\n", "last_Stream", rec->last_Stream);
-   Dmsg2(100, "%-14s	%s\n", "own_mempool", rec->own_mempool ? "true" : "false");
 }

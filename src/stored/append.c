@@ -131,6 +131,7 @@ bool do_append_data(JCR *jcr, BSOCK *bs, const char *what)
    if (dcr->dev->has_cap(CAP_DEDUP)) {
       payload_data = get_pool_memory(PM_RECORD);
       payload_data = check_pool_memory_size(payload_data,
+                                            sizeof(dcr->rec->data_len) +
                                             sizeof(payload_offset) +
                                             sizeof(payload_cksum));
    }
@@ -232,7 +233,7 @@ fi_checked:
          if (dcr->dev->has_cap(CAP_DEDUP) && stream_is_dedupable(dcr->rec->Stream)) {
             ssize_t len;
 
-            if (!dcr->write_record_to_payload_file(dcr, dcr->rec, &payload_offset, &payload_cksum)) {
+            if (!dcr->write_record_to_payload_file(dcr, &payload_offset, &payload_cksum)) {
                Dmsg2(90, "Got write_record_to_payload_file error on device %s. %s\n",
                      dcr->dev->print_name(), dcr->dev->bstrerror());
                break;
